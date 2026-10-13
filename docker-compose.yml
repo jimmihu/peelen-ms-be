@@ -1,0 +1,20 @@
+name: peelen-ms-be
+
+services:
+  app:
+    image: peelen-ms-be:${IMAGE_TAG:-latest}
+    container_name: peelen-ms-be
+    restart: unless-stopped
+    env_file: .env
+    stop_grace_period: 30s
+    networks: [peelen]
+    # Buka port ke host hanya kalau perlu, dan selalu bind ke 127.0.0.1
+    # ports: ["127.0.0.1:8082:8080"]
+
+networks:
+  peelen:
+    name: peelen-network
+    # Subnet dipatok supaya TRUSTED_PROXY_CIDRS di .env bisa diisi pasti.
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24

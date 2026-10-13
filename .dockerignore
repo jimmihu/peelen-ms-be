@@ -1,0 +1,9 @@
+.git
+.env
+*.md
+Jenkinsfile
+docker-compose.yml
+bin/
+tmp/
+server
+prd/
