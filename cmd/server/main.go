@@ -17,6 +17,7 @@ import (
 	"peelen-ms-be/internal/delivery/http/router"
 	"peelen-ms-be/internal/infrastructure/config"
 	"peelen-ms-be/internal/infrastructure/database"
+	"peelen-ms-be/internal/infrastructure/storage"
 	"peelen-ms-be/internal/repository/postgres"
 	"peelen-ms-be/internal/usecase"
 )
@@ -34,6 +35,9 @@ func main() {
 	}
 	if err := cfg.Auth.Validate(); err != nil {
 		log.Fatalf("Invalid authentication configuration: %v", err)
+	}
+	if err := cfg.ObjectStorage.Validate(); err != nil {
+		log.Fatalf("Invalid object storage configuration: %v", err)
 	}
 
 	// Set Gin mode
@@ -67,17 +71,33 @@ func main() {
 	adminRepository := postgres.NewAdminRepository(db)
 	adminUsecase := usecase.NewAdminUsecase(adminRepository, cfg.Auth.BcryptCost)
 	adminHandler := handler.NewAdminHandler(adminUsecase)
+	operationalRepository := postgres.NewOperationalRepository(db)
+	operationalUsecase := usecase.NewOperationalUsecase(operationalRepository)
+	var objectStorage storage.ObjectStorage
+	if cfg.ObjectStorage.Configured() {
+		minioStorage, err := storage.NewMinIOObjectStorage(cfg.ObjectStorage)
+		if err != nil {
+			log.Fatalf("Initialize object storage: %v", err)
+		}
+		objectStorage = minioStorage
+	}
+	operationalHandler := handler.NewOperationalHandler(operationalUsecase, objectStorage)
+	workflowRepository := postgres.NewWorkflowRepository(db)
+	workflowUsecase := usecase.NewWorkflowUsecase(workflowRepository)
+	workflowHandler := handler.NewWorkflowHandler(workflowUsecase)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
 
 	// Initialize router
 	r := router.NewRouter(router.Config{
-		AuthHandler:       authHandler,
-		AdminHandler:      adminHandler,
-		AuthMiddleware:    authMiddleware,
-		EnforceHTTPS:      cfg.Server.Mode == "release",
-		TrustedProxyCIDRs: cfg.Server.TrustedProxyCIDRs,
+		AuthHandler:        authHandler,
+		AdminHandler:       adminHandler,
+		OperationalHandler: operationalHandler,
+		WorkflowHandler:    workflowHandler,
+		AuthMiddleware:     authMiddleware,
+		EnforceHTTPS:       cfg.Server.Mode == "release",
+		TrustedProxyCIDRs:  cfg.Server.TrustedProxyCIDRs,
 	})
 	if err := r.SetTrustedProxies(cfg.Server.TrustedProxyCIDRs); err != nil {
 		log.Fatalf("Invalid trusted proxy configuration: %v", err)

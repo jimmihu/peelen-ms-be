@@ -1,7 +1,8 @@
 # peelen-ms-be
 
-Go/Gin authentication and authorization service backed by PostgreSQL, implementing
-the Authentication & Authorization requirements in `prd/1.1 Authentication & Authorization.docx`.
+Go/Gin service backed by PostgreSQL. Authentication and authorization are
+implemented from `prd/1.1 Authentication & Authorization.docx`; `ddl/init.sql`
+also defines the operational data model in `prd/1.2 PRD - Flow Per Akun.docx`.
 
 ## Implemented capabilities
 
@@ -20,7 +21,13 @@ store to enforce a single cross-instance quota.
 
 ## Database setup
 
-`ddl/init.sql` describes the current PRD schema and is intended for a new/empty database.
+`ddl/init.sql` defines the authentication and operational tables, including
+sites/vendors, inventory, policies, pipelines, task assignments, daily reports,
+evidence references, and inventory reports. It can initialize an empty database
+and extend the current auth schema with the operational tables and missing
+site/vendor columns. It does not convert unrelated legacy schemas. Operational
+API handlers and workflows beyond authentication/authorization are not implied
+by the presence of these tables.
 The Make targets load connection settings from the local `.env` file:
 
 ```bash
@@ -30,6 +37,9 @@ make db-seed # optional development/test data only
 
 `ddl/seed.sql` creates demo accounts with shared test credentials, so do not use it
 on a production database and do not run it more than once.
+For PRD 1.2 operational fixtures, run `psql` against the initialized and auth-seeded
+development database with `-f ddl/seed_v2.sql`. It can be re-run without duplicating
+the sample inventory, items, pipeline, or worker assignments.
 
 For a database created from an earlier version of the current schema where
 `refresh_tokens.session_id` is missing, apply the migration:
@@ -76,6 +86,10 @@ as HTTPS. The app rejects plain HTTP in release mode.
 
 All endpoints use the `/api/v1` prefix.
 
+Import [ddl/peelen-ms-be.postman_collection.json](ddl/peelen-ms-be.postman_collection.json)
+into Postman to try the API. Set the collection variables for the base URL,
+credentials, and valid vendor/site IDs first.
+
 | Method | Path | Access |
 |---|---|---|
 | POST | `/auth/login` | Public; returns access token, sets HttpOnly refresh cookie |
@@ -92,6 +106,79 @@ All endpoints use the `/api/v1` prefix.
 | DELETE | `/users/{id}/sessions` | Super Admin |
 | GET | `/roles` | Super Admin |
 | GET | `/audit-logs` | Super Admin |
+| GET, POST | `/sites` | All roles list in scope; Super Admin manages |
+| GET, PATCH, DELETE | `/sites/{id}` | All roles read in scope; Super Admin manages |
+| GET, POST | `/vendors` | All roles list in scope; Super Admin manages |
+| GET, PATCH, DELETE | `/vendors/{id}` | All roles read in scope; Super Admin manages |
+| GET | `/me/task` | Authenticated; active assignments for current user and date |
+| GET, POST | `/pipeline-reports` | Scoped reports; assigned worker submits |
+| GET, PATCH | `/pipeline-reports/{id}` | Scoped report read/update; manager reviews in scope |
+| GET, POST | `/inventory-report` | Scoped inventory report list/create |
+| GET | `/inventory-report/{id}` | Scoped inventory report details |
+| PATCH | `/inventory-report/{id}/review` | Super Admin, Admin, or Admin Worker in scope |
+| GET | `/dashboard/report` | Authenticated; daily scoped status summary |
+| GET | `/reports/daily` | Authenticated; daily scoped pipeline completion summary |
+| GET, POST | `/inventories` | All roles read in scope; SA, Admin, Admin Worker write |
+| GET, PATCH, DELETE | `/inventories/{id}` | All roles read in scope; SA, Admin, Admin Worker write |
+| GET, POST | `/policies` | All roles read in scope; SA, Admin, Admin Worker write |
+| GET, PATCH, DELETE | `/policies/{id}` | All roles read in scope; SA, Admin, Admin Worker write |
+| GET | `/policies/{id}/file` | All roles read in scope; returns a short-lived signed URL |
+| GET, POST | `/items` | All roles read assigned/in-scope items; SA writes |
+| GET, PATCH, DELETE | `/items/{id}` | All roles read assigned/in-scope items; SA writes |
+| GET, POST | `/pipelines` | All roles read in scope; SA and Admin write |
+| GET, PATCH, DELETE | `/pipelines/{id}` | All roles read in scope; SA and Admin write |
+| GET, POST | `/pipelines/{id}/items` | All roles read assigned/in-scope tasks; SA, Admin, Admin Worker write |
+| GET, PATCH, DELETE | `/pipeline-items/{id}` | All roles read assigned/in-scope tasks; SA, Admin, Admin Worker write |
+
+Operational list endpoints accept `page` (default `1`), `limit` (default `20`,
+maximum `100`), `status` (default `ACTIVE`), and `q`; vendor-scoped resources also
+accept `vendor_id` and `site_id`. Inventory lists additionally accept
+`status_condition`. Responses use `{ "data": [], "page": 1, "limit": 20, "total": 0 }`.
+DELETE operations on operational master records set status to `INACTIVE`.
+
+Inventory create/update requests use `multipart/form-data`; fields include
+`vendor_id`, `item`, `jenis_item`, `qty`, and `status_condition`, with an optional
+`image` file (JPEG, PNG, or WebP; up to 5 MiB). Policy create/update requests use
+`multipart/form-data` with `name`, `vendor_id` (create only), and a `file` PDF (up
+to 10 MiB). Files are stored in MinIO; create the bucket and configure
+`MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, and
+`MINIO_USE_SSL` in the environment. `GET /inventories/{id}` returns a signed
+`image_url` for active records; `GET /policies/{id}/file` returns a signed URL
+valid for 10 minutes for active policies.
+
+Pipeline creation and updates are available to Super Admin globally and Admin
+within assigned sites. Master items are shared across pipelines and sites, so
+only Super Admin may create, update, or deactivate them. Admin Workers may edit
+pipeline items in their vendor scope, but may not create or update pipelines.
+Worker pipeline/task reads are restricted to active assignments.
+
+Sites and vendors are soft-deactivated by setting `status` to `INACTIVE`.
+Super Admin can create and edit them; Admin reads sites/vendors attached to their
+site scope, and vendor roles read only their assigned vendors and related sites.
+`GET /me/task?date=YYYY-MM-DD` returns active tasks assigned to the authenticated
+user, with any report already submitted for that date.
+
+`POST /pipeline-reports` accepts `pipeline_item_id`, `shift`, `report_date`
+(`YYYY-MM-DD`), optional `status` (`IN_PROGRESS` or `SUBMITTED`), and optional
+report details (`evidence_before`, `evidence_after`, `open_date`, `closed_date`,
+`note_category`, `notes`). The caller must have an active assignment for the task
+and shift. `PATCH /pipeline-reports/{id}` lets the assigned user update report
+details/status or an in-scope manager set the review status (`COMPLETED`,
+`REJECTED`, `IN_PROGRESS`, `SUBMITTED`) and revision state (`REQUESTED`, `NONE`).
+Status and revision changes are recorded in `pipeline_report_history`.
+
+`POST /inventory-report` accepts `vendor_id`, `report_type` (`REQUEST` or
+`DAMAGED`), `description`, and optional `inventory_id` and `evidence` object key.
+`DAMAGED` requires an inventory belonging to that vendor. Managers can review
+reports using `PATCH /inventory-report/{id}/review` with `status` (`IN_REVIEW`,
+`APPROVED`, `REJECTED`, or `RESOLVED`) and optional `review_reason`.
+Report lists accept `page`, `limit`, `vendor_id`, `site_id`, `user_id`, `status`,
+`from`, and `to`.
+
+`GET /dashboard/report?date=YYYY-MM-DD` returns counts for pipeline and inventory
+reports; `GET /reports/daily?date=YYYY-MM-DD` returns pipeline completion counts
+grouped by vendor and pipeline. Both support optional `site_id` and `vendor_id`
+filters and enforce the caller's scopes.
 
 Login example:
 

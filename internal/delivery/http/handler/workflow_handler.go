@@ -1,0 +1,315 @@
+package handler
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"peelen-ms-be/internal/domain/entity"
+	"peelen-ms-be/internal/domain/repository"
+	"peelen-ms-be/internal/usecase"
+)
+
+type WorkflowHandler struct {
+	usecase usecase.WorkflowUsecase
+}
+
+func NewWorkflowHandler(workflowUsecase usecase.WorkflowUsecase) *WorkflowHandler {
+	return &WorkflowHandler{usecase: workflowUsecase}
+}
+
+func (h *WorkflowHandler) ListSites(c *gin.Context) {
+	result, err := h.usecase.ListSites(c.Request.Context(), currentUser(c))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"sites": result})
+}
+
+func (h *WorkflowHandler) GetSite(c *gin.Context) {
+	result, err := h.usecase.GetSite(c.Request.Context(), currentUser(c), c.Param("id"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"site": result})
+}
+
+func (h *WorkflowHandler) CreateSite(c *gin.Context) {
+	var input entity.Site
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.CreateSite(c.Request.Context(), currentUser(c), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"site": result})
+}
+
+func (h *WorkflowHandler) UpdateSite(c *gin.Context) {
+	var input entity.Site
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.UpdateSite(c.Request.Context(), currentUser(c), c.Param("id"), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"site": result})
+}
+
+func (h *WorkflowHandler) DeleteSite(c *gin.Context) {
+	if err := h.usecase.DeleteSite(c.Request.Context(), currentUser(c), c.Param("id")); err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *WorkflowHandler) ListVendors(c *gin.Context) {
+	result, err := h.usecase.ListVendors(c.Request.Context(), currentUser(c))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"vendors": result})
+}
+
+func (h *WorkflowHandler) GetVendor(c *gin.Context) {
+	result, err := h.usecase.GetVendor(c.Request.Context(), currentUser(c), c.Param("id"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"vendor": result})
+}
+
+func (h *WorkflowHandler) CreateVendor(c *gin.Context) {
+	var input entity.Vendor
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.CreateVendor(c.Request.Context(), currentUser(c), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"vendor": result})
+}
+
+func (h *WorkflowHandler) UpdateVendor(c *gin.Context) {
+	var input entity.Vendor
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.UpdateVendor(c.Request.Context(), currentUser(c), c.Param("id"), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"vendor": result})
+}
+
+func (h *WorkflowHandler) DeleteVendor(c *gin.Context) {
+	if err := h.usecase.DeleteVendor(c.Request.Context(), currentUser(c), c.Param("id")); err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *WorkflowHandler) MyTasks(c *gin.Context) {
+	date := c.Query("date")
+	if date == "" {
+		date = time.Now().UTC().Format("2006-01-02")
+	}
+	tasks, err := h.usecase.ListMyTasks(c.Request.Context(), currentUser(c), date)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"date": date, "tasks": tasks})
+}
+
+func (h *WorkflowHandler) ListPipelineReports(c *gin.Context) {
+	filter, err := reportFilterFromQuery(c)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_REPORT_FILTER", err.Error())
+		return
+	}
+	result, total, err := h.usecase.ListPipelineReports(c.Request.Context(), currentUser(c), filter)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result, "page": filter.Page, "limit": filter.Limit, "total": total})
+}
+
+func (h *WorkflowHandler) GetPipelineReport(c *gin.Context) {
+	result, err := h.usecase.GetPipelineReport(c.Request.Context(), currentUser(c), c.Param("id"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) CreatePipelineReport(c *gin.Context) {
+	var input entity.PipelineReportInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.CreatePipelineReport(c.Request.Context(), currentUser(c), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) UpdatePipelineReport(c *gin.Context) {
+	var input entity.PipelineReportInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.UpdatePipelineReport(c.Request.Context(), currentUser(c), c.Param("id"), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) ListInventoryReports(c *gin.Context) {
+	filter, err := reportFilterFromQuery(c)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_REPORT_FILTER", err.Error())
+		return
+	}
+	result, total, err := h.usecase.ListInventoryReports(c.Request.Context(), currentUser(c), filter)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result, "page": filter.Page, "limit": filter.Limit, "total": total})
+}
+
+func (h *WorkflowHandler) GetInventoryReport(c *gin.Context) {
+	result, err := h.usecase.GetInventoryReport(c.Request.Context(), currentUser(c), c.Param("id"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) CreateInventoryReport(c *gin.Context) {
+	var input entity.InventoryReportInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.CreateInventoryReport(c.Request.Context(), currentUser(c), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) ReviewInventoryReport(c *gin.Context) {
+	var input struct {
+		Status       string  `json:"status" binding:"required"`
+		ReviewReason *string `json:"review_reason"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.ReviewInventoryReport(
+		c.Request.Context(), currentUser(c), c.Param("id"), input.Status, input.ReviewReason,
+	)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) DashboardReport(c *gin.Context) {
+	result, err := h.usecase.ReportDashboard(
+		c.Request.Context(), currentUser(c), c.Query("date"), c.Query("site_id"), c.Query("vendor_id"),
+	)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) DailyReport(c *gin.Context) {
+	date := c.Query("date")
+	if date == "" {
+		date = time.Now().UTC().Format("2006-01-02")
+	}
+	result, err := h.usecase.DailyReport(
+		c.Request.Context(), currentUser(c), date, c.Query("site_id"), c.Query("vendor_id"),
+	)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"date": date, "data": result})
+}
+
+func reportFilterFromQuery(c *gin.Context) (entity.ReportFilter, error) {
+	page, limit := 1, 20
+	var err error
+	if value := c.Query("page"); value != "" {
+		page, err = strconv.Atoi(value)
+		if err != nil || page < 1 {
+			return entity.ReportFilter{}, errors.New("page must be positive")
+		}
+	}
+	if value := c.Query("limit"); value != "" {
+		limit, err = strconv.Atoi(value)
+		if err != nil || limit < 1 || limit > 100 {
+			return entity.ReportFilter{}, errors.New("limit must be between 1 and 100")
+		}
+	}
+	return entity.ReportFilter{
+		VendorID: c.Query("vendor_id"), SiteID: c.Query("site_id"), UserID: c.Query("user_id"),
+		Status: strings.ToUpper(c.Query("status")), From: c.Query("from"), To: c.Query("to"),
+		Page: page, Limit: limit,
+	}, nil
+}
+
+func handleWorkflowError(c *gin.Context, err error) {
+	_ = c.Error(err)
+	switch {
+	case errors.Is(err, usecase.ErrForbidden):
+		writeError(c, http.StatusForbidden, "AUTH_FORBIDDEN", "You are not allowed to perform this action")
+	case errors.Is(err, usecase.ErrNotFound), errors.Is(err, repository.ErrNotFound), errors.Is(err, entity.ErrInvalidID):
+		writeError(c, http.StatusNotFound, "RESOURCE_NOT_FOUND", "Resource not found")
+	case errors.Is(err, usecase.ErrInvalidOperationalData), errors.Is(err, entity.ErrInvalidOperationalData):
+		writeError(c, http.StatusBadRequest, "INVALID_OPERATIONAL_DATA", err.Error())
+	case errors.Is(err, repository.ErrConflict):
+		writeError(c, http.StatusConflict, "RESOURCE_CONFLICT", "The resource already exists or violates a constraint")
+	default:
+		writeError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to complete the request")
+	}
+}

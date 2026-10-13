@@ -432,10 +432,17 @@ func insertAudit(ctx context.Context, tx *sql.Tx, actorID, action, entityName, e
 			return err
 		}
 	}
+	var beforeValue, afterValue any
+	if beforeJSON != nil {
+		beforeValue = string(beforeJSON)
+	}
+	if afterJSON != nil {
+		afterValue = string(afterJSON)
+	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO audit_logs (user_id, action, entity, entity_id, before_data, after_data, ip_address)
 		VALUES (NULLIF($1, '')::uuid, $2, $3, NULLIF($4, '')::uuid, $5, $6, NULLIF($7, '')::inet)
-	`, actorID, action, entityName, entityID, beforeJSON, afterJSON, firstString(ipAddress))
+	`, actorID, action, entityName, entityID, beforeValue, afterValue, firstString(ipAddress))
 	return err
 }
 
