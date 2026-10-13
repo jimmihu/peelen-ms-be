@@ -5,18 +5,22 @@ import (
 
 	"peelen-ms-be/internal/delivery/http/handler"
 	"peelen-ms-be/internal/delivery/http/middleware"
+	"peelen-ms-be/internal/domain/entity"
 )
 
 type Config struct {
-	AuthHandler       *handler.AuthHandler
-	AdminHandler      *handler.AdminHandler
-	AuthMiddleware    *middleware.AuthMiddleware
-	EnforceHTTPS      bool
-	TrustedProxyCIDRs []string
+	AuthHandler        *handler.AuthHandler
+	AdminHandler       *handler.AdminHandler
+	OperationalHandler *handler.OperationalHandler
+	WorkflowHandler    *handler.WorkflowHandler
+	AuthMiddleware     *middleware.AuthMiddleware
+	EnforceHTTPS       bool
+	TrustedProxyCIDRs  []string
 }
 
 func NewRouter(cfg Config) *gin.Engine {
 	router := gin.Default()
+	router.Use(middleware.ErrorLogger())
 	router.Use(middleware.RequireHTTPS(cfg.EnforceHTTPS, cfg.TrustedProxyCIDRs))
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
@@ -48,5 +52,79 @@ func NewRouter(cfg Config) *gin.Engine {
 	users.DELETE("/:id/sessions", cfg.AuthMiddleware.RequireRole("SUPER_ADMIN"), cfg.AdminHandler.RevokeSessions)
 	admin.GET("/roles", cfg.AuthMiddleware.RequireRole("SUPER_ADMIN"), cfg.AdminHandler.ListRoles)
 	admin.GET("/audit-logs", cfg.AuthMiddleware.RequireRole("SUPER_ADMIN"), cfg.AdminHandler.ListAuditLogs)
+
+	operations := v1.Group("")
+	operations.Use(cfg.AuthMiddleware.Authenticate())
+	sites := operations.Group("/sites")
+	sites.GET("", cfg.WorkflowHandler.ListSites)
+	sites.POST("", cfg.WorkflowHandler.CreateSite)
+	sites.GET("/:id", cfg.WorkflowHandler.GetSite)
+	sites.PATCH("/:id", cfg.WorkflowHandler.UpdateSite)
+	sites.DELETE("/:id", cfg.WorkflowHandler.DeleteSite)
+
+	vendors := operations.Group("/vendors")
+	vendors.GET("", cfg.WorkflowHandler.ListVendors)
+	vendors.POST("", cfg.WorkflowHandler.CreateVendor)
+	vendors.GET("/:id", cfg.WorkflowHandler.GetVendor)
+	vendors.PATCH("/:id", cfg.WorkflowHandler.UpdateVendor)
+	vendors.DELETE("/:id", cfg.WorkflowHandler.DeleteVendor)
+
+	operations.GET("/me/task", cfg.WorkflowHandler.MyTasks)
+	operations.GET("/me/tasks", cfg.WorkflowHandler.MyTasks)
+
+	pipelineReports := operations.Group("/pipeline-reports")
+	pipelineReports.GET("", cfg.WorkflowHandler.ListPipelineReports)
+	pipelineReports.POST("", cfg.WorkflowHandler.CreatePipelineReport)
+	pipelineReports.GET("/:id", cfg.WorkflowHandler.GetPipelineReport)
+	pipelineReports.PATCH("/:id", cfg.WorkflowHandler.UpdatePipelineReport)
+
+	inventoryReports := operations.Group("/inventory-report")
+	inventoryReports.GET("", cfg.WorkflowHandler.ListInventoryReports)
+	inventoryReports.POST("", cfg.WorkflowHandler.CreateInventoryReport)
+	inventoryReports.GET("/:id", cfg.WorkflowHandler.GetInventoryReport)
+	inventoryReports.PATCH("/:id/review", cfg.WorkflowHandler.ReviewInventoryReport)
+	operations.GET("/inventory-reports", cfg.WorkflowHandler.ListInventoryReports)
+	operations.POST("/inventory-reports", cfg.WorkflowHandler.CreateInventoryReport)
+	operations.GET("/inventory-reports/:id", cfg.WorkflowHandler.GetInventoryReport)
+	operations.PATCH("/inventory-reports/:id/review", cfg.WorkflowHandler.ReviewInventoryReport)
+
+	operations.GET("/dashboard/report", cfg.WorkflowHandler.DashboardReport)
+	operations.GET("/reports/daily", cfg.WorkflowHandler.DailyReport)
+
+	inventories := operations.Group("/inventories")
+	inventories.GET("", cfg.OperationalHandler.List(entity.ResourceInventory))
+	inventories.POST("", cfg.OperationalHandler.CreateInventory())
+	inventories.GET("/:id", cfg.OperationalHandler.Get(entity.ResourceInventory))
+	inventories.PATCH("/:id", cfg.OperationalHandler.UpdateInventory())
+	inventories.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourceInventory))
+
+	policies := operations.Group("/policies")
+	policies.GET("", cfg.OperationalHandler.List(entity.ResourcePolicy))
+	policies.POST("", cfg.OperationalHandler.CreatePolicy())
+	policies.GET("/:id/file", cfg.OperationalHandler.PolicyFile())
+	policies.GET("/:id", cfg.OperationalHandler.Get(entity.ResourcePolicy))
+	policies.PATCH("/:id", cfg.OperationalHandler.UpdatePolicy())
+	policies.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourcePolicy))
+
+	items := operations.Group("/items")
+	items.GET("", cfg.OperationalHandler.List(entity.ResourceItem))
+	items.POST("", cfg.OperationalHandler.Create(entity.ResourceItem))
+	items.GET("/:id", cfg.OperationalHandler.Get(entity.ResourceItem))
+	items.PATCH("/:id", cfg.OperationalHandler.Update(entity.ResourceItem))
+	items.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourceItem))
+
+	pipelines := operations.Group("/pipelines")
+	pipelines.GET("", cfg.OperationalHandler.List(entity.ResourcePipeline))
+	pipelines.POST("", cfg.OperationalHandler.Create(entity.ResourcePipeline))
+	pipelines.GET("/:id", cfg.OperationalHandler.Get(entity.ResourcePipeline))
+	pipelines.PATCH("/:id", cfg.OperationalHandler.Update(entity.ResourcePipeline))
+	pipelines.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourcePipeline))
+	pipelines.GET("/:id/items", cfg.OperationalHandler.ListPipelineItems())
+	pipelines.POST("/:id/items", cfg.OperationalHandler.CreatePipelineItem())
+
+	pipelineItems := operations.Group("/pipeline-items")
+	pipelineItems.GET("/:id", cfg.OperationalHandler.Get(entity.ResourcePipelineItem))
+	pipelineItems.PATCH("/:id", cfg.OperationalHandler.Update(entity.ResourcePipelineItem))
+	pipelineItems.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourcePipelineItem))
 	return router
 }

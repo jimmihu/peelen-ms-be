@@ -8,7 +8,10 @@ import (
 	"peelen-ms-be/internal/domain/entity"
 )
 
-var ErrConflict = errors.New("resource already exists")
+var (
+	ErrConflict = errors.New("resource already exists")
+	ErrNotFound = errors.New("resource not found")
+)
 
 type AdminRepository interface {
 	ListManagedUsers(ctx context.Context, vendorID string) ([]*entity.User, error)

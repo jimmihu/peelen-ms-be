@@ -213,6 +213,7 @@ func validTargetID(c *gin.Context) bool {
 }
 
 func handleAdminError(c *gin.Context, err error) {
+	_ = c.Error(err)
 	switch {
 	case errors.Is(err, usecase.ErrForbidden):
 		writeError(c, http.StatusForbidden, "AUTH_FORBIDDEN", "You are not allowed to perform this action")
