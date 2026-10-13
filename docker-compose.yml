@@ -11,10 +11,10 @@ services:
     # Buka port ke host hanya kalau perlu, dan selalu bind ke 127.0.0.1
     # ports: ["127.0.0.1:8082:8080"]
 
+# Dibuat manual sekali di server, supaya DB bisa di-connect sebelum deploy pertama:
+#   docker network create --subnet 172.30.10.0/24 peelen-network
+# Subnet dipatok supaya TRUSTED_PROXY_CIDRS di .env bisa diisi pasti.
 networks:
   peelen:
+    external: true
     name: peelen-network
-    # Subnet dipatok supaya TRUSTED_PROXY_CIDRS di .env bisa diisi pasti.
-    ipam:
-      config:
-        - subnet: 172.30.10.0/24
