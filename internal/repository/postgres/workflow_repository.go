@@ -1,0 +1,778 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/lib/pq"
+
+	"peelen-ms-be/internal/domain/entity"
+	"peelen-ms-be/internal/domain/repository"
+)
+
+type WorkflowRepositoryImpl struct {
+	db *sql.DB
+}
+
+func NewWorkflowRepository(db *sql.DB) repository.WorkflowRepository {
+	return &WorkflowRepositoryImpl{db: db}
+}
+
+func (r *WorkflowRepositoryImpl) ListSites(ctx context.Context, access entity.OperationalAccess) ([]entity.Site, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT s.id::text, s.code, s.name, s.site_type, s.status, s.created_at, s.updated_at
+		FROM sites s
+		WHERE ($1::boolean OR s.id = ANY($2::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.site_id = s.id AND vs.vendor_id = ANY($3::uuid[])
+		))
+		ORDER BY s.code
+	`, workflowSuperAdmin(access), pq.Array(access.SiteIDs), pq.Array(access.VendorIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sites := make([]entity.Site, 0)
+	for rows.Next() {
+		var site entity.Site
+		var siteType sql.NullString
+		if err := rows.Scan(&site.ID, &site.Code, &site.Name, &siteType, &site.Status, &site.CreatedAt, &site.UpdatedAt); err != nil {
+			return nil, err
+		}
+		site.SiteType = nullStringPtr(siteType)
+		sites = append(sites, site)
+	}
+	return sites, rows.Err()
+}
+
+func (r *WorkflowRepositoryImpl) GetSite(ctx context.Context, access entity.OperationalAccess, id string) (*entity.Site, error) {
+	var site entity.Site
+	var siteType sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		SELECT s.id::text, s.code, s.name, s.site_type, s.status, s.created_at, s.updated_at
+		FROM sites s
+		WHERE s.id = $1 AND ($2::boolean OR s.id = ANY($3::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.site_id = s.id AND vs.vendor_id = ANY($4::uuid[])
+		))
+	`, id, workflowSuperAdmin(access), pq.Array(access.SiteIDs), pq.Array(access.VendorIDs)).
+		Scan(&site.ID, &site.Code, &site.Name, &siteType, &site.Status, &site.CreatedAt, &site.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	site.SiteType = nullStringPtr(siteType)
+	return &site, nil
+}
+
+func (r *WorkflowRepositoryImpl) CreateSite(ctx context.Context, site entity.Site) (*entity.Site, error) {
+	var result entity.Site
+	var siteType sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO sites (code, name, site_type, status)
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'ACTIVE'))
+		RETURNING id::text, code, name, site_type, status, created_at, updated_at
+	`, site.Code, site.Name, site.SiteType, site.Status).
+		Scan(&result.ID, &result.Code, &result.Name, &siteType, &result.Status, &result.CreatedAt, &result.UpdatedAt)
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	result.SiteType = nullStringPtr(siteType)
+	return &result, nil
+}
+
+func (r *WorkflowRepositoryImpl) UpdateSite(ctx context.Context, id string, site entity.Site) (*entity.Site, error) {
+	var result entity.Site
+	var siteType sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		UPDATE sites SET code = COALESCE(NULLIF($2, ''), code),
+			name = COALESCE(NULLIF($3, ''), name),
+			site_type = COALESCE($4, site_type),
+			status = COALESCE(NULLIF($5, ''), status)
+		WHERE id = $1
+		RETURNING id::text, code, name, site_type, status, created_at, updated_at
+	`, id, site.Code, site.Name, site.SiteType, site.Status).
+		Scan(&result.ID, &result.Code, &result.Name, &siteType, &result.Status, &result.CreatedAt, &result.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	result.SiteType = nullStringPtr(siteType)
+	return &result, nil
+}
+
+func (r *WorkflowRepositoryImpl) DeleteSite(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE sites SET status = 'INACTIVE' WHERE id = $1`, id)
+	if err != nil {
+		return translateOperationalDBError(err)
+	}
+	return workflowRequireAffected(result)
+}
+
+func (r *WorkflowRepositoryImpl) ListVendors(ctx context.Context, access entity.OperationalAccess) ([]entity.Vendor, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT v.id::text, v.code, v.name, v.status,
+			ARRAY(SELECT vs.site_id::text FROM vendor_sites vs WHERE vs.vendor_id = v.id ORDER BY vs.site_id)::text,
+			v.created_at, v.updated_at
+		FROM vendors v
+		WHERE ($1::boolean OR v.id = ANY($2::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = v.id AND vs.site_id = ANY($3::uuid[])
+		))
+		ORDER BY v.code
+	`, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	vendors := make([]entity.Vendor, 0)
+	for rows.Next() {
+		var vendor entity.Vendor
+		var siteIDs pq.StringArray
+		if err := rows.Scan(&vendor.ID, &vendor.Code, &vendor.Name, &vendor.Status, &siteIDs, &vendor.CreatedAt, &vendor.UpdatedAt); err != nil {
+			return nil, err
+		}
+		vendor.SiteIDs = []string(siteIDs)
+		vendors = append(vendors, vendor)
+	}
+	return vendors, rows.Err()
+}
+
+func (r *WorkflowRepositoryImpl) GetVendor(ctx context.Context, access entity.OperationalAccess, id string) (*entity.Vendor, error) {
+	var vendor entity.Vendor
+	var siteIDs pq.StringArray
+	err := r.db.QueryRowContext(ctx, `
+		SELECT v.id::text, v.code, v.name, v.status,
+			ARRAY(SELECT vs.site_id::text FROM vendor_sites vs WHERE vs.vendor_id = v.id ORDER BY vs.site_id)::text,
+			v.created_at, v.updated_at
+		FROM vendors v
+		WHERE v.id = $1 AND ($2::boolean OR v.id = ANY($3::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = v.id AND vs.site_id = ANY($4::uuid[])
+		))
+	`, id, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)).
+		Scan(&vendor.ID, &vendor.Code, &vendor.Name, &vendor.Status, &siteIDs, &vendor.CreatedAt, &vendor.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	vendor.SiteIDs = []string(siteIDs)
+	return &vendor, nil
+}
+
+func (r *WorkflowRepositoryImpl) CreateVendor(ctx context.Context, vendor entity.Vendor, siteIDs []string) (*entity.Vendor, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var id string
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO vendors (code, name, status)
+		VALUES ($1, $2, COALESCE(NULLIF($3, ''), 'ACTIVE'))
+		RETURNING id::text
+	`, vendor.Code, vendor.Name, vendor.Status).Scan(&id); err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	if err := replaceVendorSites(ctx, tx, id, siteIDs); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetVendor(ctx, superAdminAccess(), id)
+}
+
+func (r *WorkflowRepositoryImpl) UpdateVendor(ctx context.Context, id string, vendor entity.Vendor, siteIDs []string) (*entity.Vendor, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE vendors SET code = COALESCE(NULLIF($2, ''), code),
+			name = COALESCE(NULLIF($3, ''), name),
+			status = COALESCE(NULLIF($4, ''), status)
+		WHERE id = $1
+	`, id, vendor.Code, vendor.Name, vendor.Status)
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	if err := workflowRequireAffected(result); err != nil {
+		return nil, err
+	}
+	if siteIDs != nil {
+		if err := replaceVendorSites(ctx, tx, id, siteIDs); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetVendor(ctx, superAdminAccess(), id)
+}
+
+func (r *WorkflowRepositoryImpl) DeleteVendor(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE vendors SET status = 'INACTIVE' WHERE id = $1`, id)
+	if err != nil {
+		return translateOperationalDBError(err)
+	}
+	return workflowRequireAffected(result)
+}
+
+func replaceVendorSites(ctx context.Context, tx *sql.Tx, vendorID string, siteIDs []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_sites WHERE vendor_id = $1`, vendorID); err != nil {
+		return err
+	}
+	for _, siteID := range siteIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO vendor_sites (vendor_id, site_id) VALUES ($1, $2)`, vendorID, siteID); err != nil {
+			return translateOperationalDBError(err)
+		}
+	}
+	return nil
+}
+
+func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.OperationalAccess, reportDate time.Time) ([]entity.MyTask, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name,
+			p.vendor_id::text, a.shift, to_char($2::date, 'YYYY-MM-DD'),
+			pr.id::text, pr.status, pr.status_revisi
+		FROM pipeline_item_assignments a
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN items i ON i.id = pi.item_id
+		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_id = pi.id
+			AND pr.user_id = a.user_id AND pr.shift = a.shift AND pr.report_date = $2::date
+		WHERE a.user_id = $1 AND a.is_active AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE' AND i.status = 'ACTIVE'
+		ORDER BY p.name, pi.sort_order, i.name
+	`, access.UserID, reportDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tasks := make([]entity.MyTask, 0)
+	for rows.Next() {
+		var task entity.MyTask
+		var reportID, reportStatus, statusRevisi sql.NullString
+		if err := rows.Scan(&task.AssignmentID, &task.PipelineItemID, &task.PipelineID, &task.PipelineName,
+			&task.ItemID, &task.ItemName, &task.VendorID, &task.Shift, &task.ReportDate,
+			&reportID, &reportStatus, &statusRevisi); err != nil {
+			return nil, err
+		}
+		task.ReportID = nullStringPtr(reportID)
+		task.ReportStatus = nullStringPtr(reportStatus)
+		task.StatusRevisi = nullStringPtr(statusRevisi)
+		tasks = append(tasks, task)
+	}
+	return tasks, rows.Err()
+}
+
+func (r *WorkflowRepositoryImpl) ListPipelineReports(ctx context.Context, access entity.OperationalAccess, filter entity.ReportFilter) ([]entity.PipelineReport, int, error) {
+	where, args := pipelineReportScope(access)
+	appendReportFilters(&where, &args, filter, "p.vendor_id", "pr.user_id", "pr.status", "pr.report_date")
+	return queryPipelineReports(ctx, r.db, strings.Join(where, " AND "), args, filter.Page, filter.Limit)
+}
+
+func (r *WorkflowRepositoryImpl) GetPipelineReport(ctx context.Context, access entity.OperationalAccess, id string) (*entity.PipelineReport, error) {
+	where, args := pipelineReportScope(access)
+	args = append(args, id)
+	reports, _, err := queryPipelineReports(ctx, r.db, strings.Join(where, " AND ")+fmt.Sprintf(" AND pr.id = $%d", len(args)), args, 1, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(reports) == 0 {
+		return nil, repository.ErrNotFound
+	}
+	return &reports[0], nil
+}
+
+func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, access entity.OperationalAccess, input entity.PipelineReportInput) (*entity.PipelineReport, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var reportID string
+	status := input.Status
+	if status == "" {
+		status = "SUBMITTED"
+	}
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO pipeline_reports (pipeline_item_id, user_id, shift, report_date, status, status_revisi)
+		SELECT pi.id, a.user_id, a.shift, $4::date, $5, COALESCE(NULLIF($6, ''), 'NONE')
+		FROM pipeline_item_assignments a
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		WHERE pi.id = $1 AND a.user_id = $2 AND a.shift = $3 AND a.is_active
+			AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE'
+		RETURNING id::text
+	`, input.PipelineItemID, access.UserID, input.Shift, input.ReportDate, status, input.StatusRevisi).Scan(&reportID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, translateOperationalDBError(err)
+	}
+	if err := writePipelineReportDetails(ctx, tx, reportID, input); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO pipeline_report_history (pipeline_report_id, actor_id, new_status, new_revision, reason)
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'NONE'), $5)
+	`, reportID, access.UserID, status, input.StatusRevisi, input.Reason); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	return r.GetPipelineReport(ctx, access, reportID)
+}
+
+func (r *WorkflowRepositoryImpl) UpdatePipelineReport(ctx context.Context, access entity.OperationalAccess, id string, input entity.PipelineReportInput, canReview bool) (*entity.PipelineReport, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var previousStatus, previousRevision string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT pr.status, pr.status_revisi FROM pipeline_reports pr
+		JOIN pipeline_item_assignments a ON a.pipeline_item_id = pr.pipeline_item_id
+			AND a.user_id = pr.user_id AND a.shift = pr.shift
+		JOIN pipeline_items pi ON pi.id = pr.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		WHERE pr.id = $1
+			AND ($2::boolean OR p.vendor_id = ANY($3::uuid[]) OR EXISTS (
+				SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($4::uuid[])
+			))
+			AND ($5::boolean OR (pr.user_id = $6 AND a.is_active))
+	`, id, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), canReview, access.UserID).
+		Scan(&previousStatus, &previousRevision); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, err
+	}
+	status := input.Status
+	revision := input.StatusRevisi
+	if status == "" {
+		status = previousStatus
+	}
+	if revision == "" {
+		revision = previousRevision
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE pipeline_reports SET status = $2, status_revisi = $3, updated_at = now()
+		WHERE id = $1
+	`, id, status, revision)
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	if err := workflowRequireAffected(result); err != nil {
+		return nil, err
+	}
+	if err := writePipelineReportDetails(ctx, tx, id, input); err != nil {
+		return nil, err
+	}
+	if previousStatus != status || previousRevision != revision {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO pipeline_report_history
+				(pipeline_report_id, actor_id, previous_status, new_status, previous_revision, new_revision, reason)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, id, access.UserID, previousStatus, status, previousRevision, revision, input.Reason); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetPipelineReport(ctx, access, id)
+}
+
+func writePipelineReportDetails(ctx context.Context, tx *sql.Tx, reportID string, input entity.PipelineReportInput) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO pipeline_report_details
+			(pipeline_report_id, evidence_before, evidence_after, open_date, closed_date, note_category, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (pipeline_report_id) DO UPDATE SET
+			evidence_before = COALESCE(EXCLUDED.evidence_before, pipeline_report_details.evidence_before),
+			evidence_after = COALESCE(EXCLUDED.evidence_after, pipeline_report_details.evidence_after),
+			open_date = COALESCE(EXCLUDED.open_date, pipeline_report_details.open_date),
+			closed_date = COALESCE(EXCLUDED.closed_date, pipeline_report_details.closed_date),
+			note_category = COALESCE(EXCLUDED.note_category, pipeline_report_details.note_category),
+			notes = COALESCE(EXCLUDED.notes, pipeline_report_details.notes),
+			updated_at = now()
+	`, reportID, input.EvidenceBefore, input.EvidenceAfter, input.OpenDate, input.ClosedDate, input.NoteCategory, input.Notes)
+	return err
+}
+
+func (r *WorkflowRepositoryImpl) ListInventoryReports(ctx context.Context, access entity.OperationalAccess, filter entity.ReportFilter) ([]entity.InventoryReport, int, error) {
+	where := []string{`($1::boolean OR ir.vendor_id = ANY($2::uuid[]) OR EXISTS (
+		SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = ir.vendor_id AND vs.site_id = ANY($3::uuid[])
+	))`}
+	args := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)}
+	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
+		where = append(where, fmt.Sprintf("ir.user_id = $%d", len(args)+1))
+		args = append(args, access.UserID)
+	}
+	appendReportFilters(&where, &args, filter, "ir.vendor_id", "ir.user_id", "ir.status", "ir.created_at")
+	whereSQL := strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM inventory_reports ir JOIN users u ON u.id = ir.user_id WHERE `+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, filter.Limit, (filter.Page-1)*filter.Limit)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT ir.id::text, ir.vendor_id::text, ir.inventory_id::text, ir.user_id::text, u.username,
+			ir.report_type, ir.evidence, ir.description, ir.status, ir.review_reason,
+			ir.reviewed_by::text, ir.created_at, ir.updated_at
+		FROM inventory_reports ir JOIN users u ON u.id = ir.user_id
+		WHERE `+whereSQL+fmt.Sprintf(" ORDER BY ir.created_at DESC LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	result := make([]entity.InventoryReport, 0)
+	for rows.Next() {
+		report, err := scanInventoryReport(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		result = append(result, report)
+	}
+	return result, total, rows.Err()
+}
+
+func (r *WorkflowRepositoryImpl) CreateInventoryReport(ctx context.Context, access entity.OperationalAccess, input entity.InventoryReportInput) (*entity.InventoryReport, error) {
+	var id string
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO inventory_reports (vendor_id, inventory_id, user_id, report_type, evidence, description)
+		SELECT $1, $2, $3, $4, $5, $6
+		WHERE ($7::boolean OR $1 = ANY($8::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = $1 AND vs.site_id = ANY($9::uuid[])
+		))
+		RETURNING id::text
+	`, input.VendorID, input.InventoryID, access.UserID, input.ReportType, input.Evidence, input.Description,
+		workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	return r.getInventoryReport(ctx, access, id)
+}
+
+func (r *WorkflowRepositoryImpl) ReviewInventoryReport(ctx context.Context, access entity.OperationalAccess, id, status string, reason *string) (*entity.InventoryReport, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE inventory_reports ir SET status = $2, review_reason = $3, reviewed_by = $4, updated_at = now()
+		WHERE ir.id = $1 AND ($5::boolean OR ir.vendor_id = ANY($6::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = ir.vendor_id AND vs.site_id = ANY($7::uuid[])
+		))
+	`, id, status, reason, access.UserID, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	if err := workflowRequireAffected(result); err != nil {
+		return nil, err
+	}
+	return r.getInventoryReport(ctx, access, id)
+}
+
+func (r *WorkflowRepositoryImpl) getInventoryReport(ctx context.Context, access entity.OperationalAccess, id string) (*entity.InventoryReport, error) {
+	where := `ir.id = $1 AND ($2::boolean OR ir.vendor_id = ANY($3::uuid[]) OR EXISTS (
+		SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = ir.vendor_id AND vs.site_id = ANY($4::uuid[])
+	))`
+	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
+		where += " AND ir.user_id = $5"
+	}
+	args := []any{id, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)}
+	if strings.Contains(where, "ir.user_id = $5") {
+		args = append(args, access.UserID)
+	}
+	row := r.db.QueryRowContext(ctx, `
+		SELECT ir.id::text, ir.vendor_id::text, ir.inventory_id::text, ir.user_id::text, u.username,
+			ir.report_type, ir.evidence, ir.description, ir.status, ir.review_reason,
+			ir.reviewed_by::text, ir.created_at, ir.updated_at
+		FROM inventory_reports ir JOIN users u ON u.id = ir.user_id WHERE `+where, args...)
+	report, err := scanInventoryReport(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
+func (r *WorkflowRepositoryImpl) GetInventoryReport(ctx context.Context, access entity.OperationalAccess, id string) (*entity.InventoryReport, error) {
+	return r.getInventoryReport(ctx, access, id)
+}
+
+func (r *WorkflowRepositoryImpl) ReportDashboard(ctx context.Context, access entity.OperationalAccess, date time.Time, siteID, vendorID string) (map[string]any, error) {
+	var pipelineTotal, pipelinePending, pipelineSubmitted, pipelineCompleted int
+	pipelineScope := `($1::boolean OR p.vendor_id = ANY($2::uuid[]) OR EXISTS (
+		SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($3::uuid[])
+	))`
+	pipelineQuery := `SELECT count(*),
+		count(*) FILTER (WHERE pr.status IN ('PENDING', 'IN_PROGRESS')),
+		count(*) FILTER (WHERE pr.status = 'SUBMITTED'),
+		count(*) FILTER (WHERE pr.status = 'COMPLETED')
+		FROM pipeline_reports pr JOIN pipeline_items pi ON pi.id = pr.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		WHERE pr.report_date = $4::date AND ` + pipelineScope
+	args := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), date}
+	if siteID != "" {
+		pipelineQuery += ` AND EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = $5)`
+		args = append(args, siteID)
+	}
+	if vendorID != "" {
+		pipelineQuery += fmt.Sprintf(" AND p.vendor_id = $%d", len(args)+1)
+		args = append(args, vendorID)
+	}
+	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
+		pipelineQuery += fmt.Sprintf(" AND pr.user_id = $%d", len(args)+1)
+		args = append(args, access.UserID)
+	}
+	if err := r.db.QueryRowContext(ctx, pipelineQuery, args...).Scan(&pipelineTotal, &pipelinePending, &pipelineSubmitted, &pipelineCompleted); err != nil {
+		return nil, err
+	}
+
+	var inventoryTotal, inventorySubmitted, inventoryInReview, inventoryResolved int
+	inventoryQuery := `SELECT count(*),
+		count(*) FILTER (WHERE ir.status = 'SUBMITTED'),
+		count(*) FILTER (WHERE ir.status = 'IN_REVIEW'),
+		count(*) FILTER (WHERE ir.status = 'RESOLVED')
+		FROM inventory_reports ir
+		WHERE ir.created_at::date = $4::date AND ($1::boolean OR ir.vendor_id = ANY($2::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = ir.vendor_id AND vs.site_id = ANY($3::uuid[])
+		))`
+	inventoryArgs := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), date}
+	if siteID != "" {
+		inventoryQuery += ` AND EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = ir.vendor_id AND vs.site_id = $5)`
+		inventoryArgs = append(inventoryArgs, siteID)
+	}
+	if vendorID != "" {
+		inventoryQuery += fmt.Sprintf(" AND ir.vendor_id = $%d", len(inventoryArgs)+1)
+		inventoryArgs = append(inventoryArgs, vendorID)
+	}
+	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
+		inventoryQuery += fmt.Sprintf(" AND ir.user_id = $%d", len(inventoryArgs)+1)
+		inventoryArgs = append(inventoryArgs, access.UserID)
+	}
+	if err := r.db.QueryRowContext(ctx, inventoryQuery, inventoryArgs...).Scan(&inventoryTotal, &inventorySubmitted, &inventoryInReview, &inventoryResolved); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"date": date.Format("2006-01-02"),
+		"pipeline_reports": map[string]int{
+			"total": pipelineTotal, "pending": pipelinePending, "submitted": pipelineSubmitted, "completed": pipelineCompleted,
+		},
+		"inventory_reports": map[string]int{
+			"total": inventoryTotal, "submitted": inventorySubmitted, "in_review": inventoryInReview, "resolved": inventoryResolved,
+		},
+	}, nil
+}
+
+func (r *WorkflowRepositoryImpl) DailyReport(ctx context.Context, access entity.OperationalAccess, date time.Time, siteID, vendorID string) ([]map[string]any, error) {
+	query := `SELECT p.vendor_id::text, v.name, p.id::text, p.name,
+		count(DISTINCT pi.id) AS task_count,
+		count(DISTINCT pr.id) AS report_count,
+		count(DISTINCT pr.id) FILTER (WHERE pr.status = 'COMPLETED') AS completed_count,
+		count(DISTINCT pr.id) FILTER (WHERE pr.status IN ('PENDING', 'IN_PROGRESS')) AS pending_count,
+		count(DISTINCT pr.id) FILTER (WHERE pr.status = 'SUBMITTED') AS submitted_count
+		FROM pipelines p JOIN vendors v ON v.id = p.vendor_id
+		JOIN pipeline_items pi ON pi.pipeline_id = p.id AND pi.status = 'ACTIVE'
+		LEFT JOIN pipeline_item_assignments a ON a.pipeline_item_id = pi.id AND a.is_active
+		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_id = pi.id AND pr.user_id = a.user_id
+			AND pr.shift = a.shift AND pr.report_date = $4::date
+		WHERE p.status = 'ACTIVE' AND ($1::boolean OR p.vendor_id = ANY($2::uuid[]) OR EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($3::uuid[])
+		))`
+	args := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), date}
+	if siteID != "" {
+		query += ` AND EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = $5)`
+		args = append(args, siteID)
+	}
+	if vendorID != "" {
+		query += fmt.Sprintf(" AND p.vendor_id = $%d", len(args)+1)
+		args = append(args, vendorID)
+	}
+	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
+		query += fmt.Sprintf(" AND a.user_id = $%d", len(args)+1)
+		args = append(args, access.UserID)
+	}
+	query += ` GROUP BY p.vendor_id, v.name, p.id, p.name ORDER BY v.name, p.name`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]map[string]any, 0)
+	for rows.Next() {
+		var vendorID, vendorName, pipelineID, pipelineName string
+		var tasks, reports, completed, pending, submitted int
+		if err := rows.Scan(&vendorID, &vendorName, &pipelineID, &pipelineName, &tasks, &reports, &completed, &pending, &submitted); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]any{
+			"vendor_id": vendorID, "vendor_name": vendorName, "pipeline_id": pipelineID, "pipeline_name": pipelineName,
+			"task_count": tasks, "report_count": reports, "completed_count": completed,
+			"pending_count": pending, "submitted_count": submitted,
+		})
+	}
+	return result, rows.Err()
+}
+
+func queryPipelineReports(ctx context.Context, db *sql.DB, whereSQL string, args []any, page, limit int) ([]entity.PipelineReport, int, error) {
+	from := `pipeline_reports pr
+		JOIN users u ON u.id = pr.user_id
+		JOIN pipeline_items pi ON pi.id = pr.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN items i ON i.id = pi.item_id
+		LEFT JOIN pipeline_report_details d ON d.pipeline_report_id = pr.id`
+	var total int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM "+from+" WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, limit, (page-1)*limit)
+	rows, err := db.QueryContext(ctx, `
+		SELECT pr.id::text, pi.id::text, p.id::text, i.id::text, i.name, p.vendor_id::text,
+			u.id::text, u.username, pr.shift, to_char(pr.report_date, 'YYYY-MM-DD'),
+			pr.status, pr.status_revisi, d.evidence_before, d.evidence_after,
+			d.open_date, d.closed_date, d.note_category, d.notes, pr.created_at, pr.updated_at
+		FROM `+from+" WHERE "+whereSQL+
+		fmt.Sprintf(" ORDER BY pr.report_date DESC, pr.created_at DESC LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	result := make([]entity.PipelineReport, 0)
+	for rows.Next() {
+		report, err := scanPipelineReport(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		result = append(result, report)
+	}
+	return result, total, rows.Err()
+}
+
+func scanPipelineReport(row interface{ Scan(...any) error }) (entity.PipelineReport, error) {
+	var report entity.PipelineReport
+	var evidenceBefore, evidenceAfter, noteCategory, notes sql.NullString
+	var openDate, closedDate sql.NullTime
+	err := row.Scan(&report.ID, &report.PipelineItemID, &report.PipelineID, &report.ItemID,
+		&report.ItemName, &report.VendorID, &report.UserID, &report.Username, &report.Shift,
+		&report.ReportDate, &report.Status, &report.StatusRevisi, &evidenceBefore, &evidenceAfter,
+		&openDate, &closedDate, &noteCategory, &notes, &report.CreatedAt, &report.UpdatedAt)
+	if err != nil {
+		return entity.PipelineReport{}, err
+	}
+	report.EvidenceBefore = nullStringPtr(evidenceBefore)
+	report.EvidenceAfter = nullStringPtr(evidenceAfter)
+	report.NoteCategory = nullStringPtr(noteCategory)
+	report.Notes = nullStringPtr(notes)
+	report.OpenDate = nullTimePtr(openDate)
+	report.ClosedDate = nullTimePtr(closedDate)
+	return report, nil
+}
+
+func scanInventoryReport(row interface{ Scan(...any) error }) (entity.InventoryReport, error) {
+	var report entity.InventoryReport
+	var inventoryID, evidence, reviewReason, reviewedBy sql.NullString
+	err := row.Scan(&report.ID, &report.VendorID, &inventoryID, &report.UserID, &report.Username,
+		&report.ReportType, &evidence, &report.Description, &report.Status, &reviewReason,
+		&reviewedBy, &report.CreatedAt, &report.UpdatedAt)
+	if err != nil {
+		return entity.InventoryReport{}, err
+	}
+	report.InventoryID = nullStringPtr(inventoryID)
+	report.Evidence = nullStringPtr(evidence)
+	report.ReviewReason = nullStringPtr(reviewReason)
+	report.ReviewedBy = nullStringPtr(reviewedBy)
+	return report, nil
+}
+
+func pipelineReportScope(access entity.OperationalAccess) ([]string, []any) {
+	where := []string{`($1::boolean OR p.vendor_id = ANY($2::uuid[]) OR EXISTS (
+		SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($3::uuid[])
+	))`}
+	args := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)}
+	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
+		where = append(where, fmt.Sprintf("pr.user_id = $%d", len(args)+1))
+		args = append(args, access.UserID)
+	}
+	return where, args
+}
+
+func appendReportFilters(where *[]string, args *[]any, filter entity.ReportFilter, vendorExpr, userExpr, statusExpr, dateExpr string) {
+	if filter.VendorID != "" {
+		*where = append(*where, fmt.Sprintf("%s = $%d", vendorExpr, len(*args)+1))
+		*args = append(*args, filter.VendorID)
+	}
+	if filter.SiteID != "" {
+		*where = append(*where, fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = %s AND vs.site_id = $%d
+		)`, vendorExpr, len(*args)+1))
+		*args = append(*args, filter.SiteID)
+	}
+	if filter.UserID != "" {
+		*where = append(*where, fmt.Sprintf("%s = $%d", userExpr, len(*args)+1))
+		*args = append(*args, filter.UserID)
+	}
+	if filter.Status != "" {
+		*where = append(*where, fmt.Sprintf("%s = $%d", statusExpr, len(*args)+1))
+		*args = append(*args, filter.Status)
+	}
+	if filter.From != "" {
+		*where = append(*where, fmt.Sprintf("%s >= $%d::date", dateExpr, len(*args)+1))
+		*args = append(*args, filter.From)
+	}
+	if filter.To != "" {
+		*where = append(*where, fmt.Sprintf("%s < ($%d::date + interval '1 day')", dateExpr, len(*args)+1))
+		*args = append(*args, filter.To)
+	}
+}
+
+func workflowSuperAdmin(access entity.OperationalAccess) bool {
+	return hasWorkflowRole(access.Roles, "SUPER_ADMIN")
+}
+
+func superAdminAccess() entity.OperationalAccess {
+	return entity.OperationalAccess{Roles: []string{"SUPER_ADMIN"}}
+}
+
+func hasWorkflowRole(roles []string, expected ...string) bool {
+	for _, role := range roles {
+		for _, value := range expected {
+			if role == value {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func workflowRequireAffected(result sql.Result) error {
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return repository.ErrNotFound
+	}
+	return nil
+}
+
+func nullTimePtr(value sql.NullTime) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Time
+}

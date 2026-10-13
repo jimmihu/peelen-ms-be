@@ -29,6 +29,19 @@ INSERT INTO vendors (code, name) VALUES
     ('VND-004', 'PT Bumi Jaya Konstruksi'),
     ('VND-005', 'PT Cahaya Energi Nusantara');
 
+INSERT INTO vendor_sites (vendor_id, site_id)
+SELECT v.id, s.id
+FROM (VALUES
+    ('VND-001', 'PAITON'),
+    ('VND-001', 'PACITAN'),
+    ('VND-002', 'SURALAYA'),
+    ('VND-003', 'PBK-CLG'),
+    ('VND-004', 'GD-JKT'),
+    ('VND-005', 'GD-JKT')
+) AS mapping(vendor_code, site_code)
+JOIN vendors v ON v.code = mapping.vendor_code
+JOIN sites s ON s.code = mapping.site_code;
+
 -- -----------------------------------------------------
 -- users  (password: Password123!)
 -- -----------------------------------------------------

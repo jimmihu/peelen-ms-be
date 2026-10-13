@@ -22,6 +22,7 @@ func RequireHTTPS(enforce bool, trustedProxyCIDRs []string) gin.HandlerFunc {
 			return
 		}
 		c.Header("Upgrade", "TLS/1.2")
+		c.Set(errorCodeContextKey, "HTTPS_REQUIRED")
 		c.AbortWithStatusJSON(426, gin.H{
 			"error": gin.H{"code": "HTTPS_REQUIRED", "message": "This endpoint requires HTTPS"},
 		})

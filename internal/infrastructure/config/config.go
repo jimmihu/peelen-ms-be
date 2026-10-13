@@ -10,9 +10,10 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Auth     AuthConfig
+	Server        ServerConfig
+	Database      DatabaseConfig
+	Auth          AuthConfig
+	ObjectStorage ObjectStorageConfig
 }
 
 type ServerConfig struct {
@@ -40,6 +41,33 @@ type AuthConfig struct {
 	JWTKeys              map[string][]byte
 }
 
+type ObjectStorageConfig struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
+}
+
+func (c ObjectStorageConfig) Configured() bool {
+	return c.Endpoint != "" || c.AccessKey != "" || c.SecretKey != "" || c.Bucket != ""
+}
+
+func (c ObjectStorageConfig) Validate() error {
+	if !c.Configured() {
+		return nil
+	}
+	if c.Endpoint == "" || c.AccessKey == "" || c.SecretKey == "" || c.Bucket == "" {
+		return fmt.Errorf("MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY and MINIO_BUCKET must be configured together")
+	}
+	if value, exists := os.LookupEnv("MINIO_USE_SSL"); exists {
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("MINIO_USE_SSL must be a boolean")
+		}
+	}
+	return nil
+}
+
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -63,6 +91,13 @@ func Load() *Config {
 			BcryptCost:           getIntEnv("AUTH_BCRYPT_COST", 12),
 			ActiveKeyID:          getEnv("JWT_ACTIVE_KID", "current"),
 			JWTKeys:              getJWTKeys(),
+		},
+		ObjectStorage: ObjectStorageConfig{
+			Endpoint:  getEnv("MINIO_ENDPOINT", ""),
+			AccessKey: getEnv("MINIO_ACCESS_KEY", ""),
+			SecretKey: getEnv("MINIO_SECRET_KEY", ""),
+			Bucket:    getEnv("MINIO_BUCKET", ""),
+			UseSSL:    getBoolEnv("MINIO_USE_SSL", false),
 		},
 	}
 }
@@ -153,6 +188,15 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	if value, exists := os.LookupEnv(key); exists {
 		if duration, err := time.ParseDuration(value); err == nil {
 			return duration
+		}
+	}
+	return defaultValue
+}
+
+func getBoolEnv(key string, defaultValue bool) bool {
+	if value, exists := os.LookupEnv(key); exists {
+		if boolValue, err := strconv.ParseBool(value); err == nil {
+			return boolValue
 		}
 	}
 	return defaultValue

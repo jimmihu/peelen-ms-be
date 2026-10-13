@@ -79,6 +79,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	result, err := h.authUsecase.Login(c.Request.Context(), username, req.Password, requestMetadata(c))
 	if err != nil {
+		_ = c.Error(err)
 		switch {
 		case errors.Is(err, usecase.ErrAccountLocked):
 			writeError(c, http.StatusLocked, "AUTH_ACCOUNT_LOCKED", "Account is temporarily locked")
@@ -121,6 +122,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 	result, err := h.authUsecase.Refresh(c.Request.Context(), token, requestMetadata(c))
 	if err != nil {
+		_ = c.Error(err)
 		switch {
 		case errors.Is(err, usecase.ErrRefreshReuse):
 			clearRefreshCookie(c)
@@ -145,6 +147,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	id, _ := userID.(string)
 	if err := h.authUsecase.Logout(c.Request.Context(), id, accessToken, refreshToken, requestIPAddress(c)); err != nil {
+		_ = c.Error(err)
 		if errors.Is(err, usecase.ErrInvalidToken) {
 			writeError(c, http.StatusUnauthorized, "AUTH_INVALID_TOKEN", "Invalid or expired token")
 			return
@@ -164,6 +167,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 		return
 	}
 	if err := h.authUsecase.LogoutAll(c.Request.Context(), id, requestIPAddress(c)); err != nil {
+		_ = c.Error(err)
 		writeError(c, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "Unable to revoke sessions")
 		return
 	}
@@ -184,6 +188,9 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 	err := h.authUsecase.ChangePassword(c.Request.Context(), id, req.CurrentPassword, req.NewPassword, requestIPAddress(c))
+	if err != nil {
+		_ = c.Error(err)
+	}
 	switch {
 	case errors.Is(err, usecase.ErrPasswordPolicy):
 		writeError(c, http.StatusBadRequest, "AUTH_PASSWORD_POLICY", err.Error())
@@ -248,6 +255,7 @@ func requestIPAddress(c *gin.Context) string {
 }
 
 func writeError(c *gin.Context, status int, code, message string) {
+	c.Set("http_error_code", code)
 	c.JSON(status, ErrorResponse{Error: APIError{Code: code, Message: message}})
 }
 
