@@ -8,8 +8,9 @@ services:
     env_file: .env
     stop_grace_period: 30s
     networks: [peelen]
-    # Buka port ke host hanya kalau perlu, dan selalu bind ke 127.0.0.1
-    # ports: ["127.0.0.1:8082:8080"]
+    # Dibuka publik untuk testing lewat Postman. HTTP polos: tutup lagi (atau pindah
+    # ke subdomain HTTPS lewat nginx Mailcow) sebelum dipakai production.
+    ports: ["8082:8080"]
 
 # Dibuat manual sekali di server, supaya DB bisa di-connect sebelum deploy pertama:
 #   docker network create --subnet 172.30.10.0/24 peelen-network
