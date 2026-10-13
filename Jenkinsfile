@@ -24,7 +24,7 @@ pipeline {
       }
     }
     stage('Deploy') {
-      when { branch 'master' }
+      when { anyOf { branch 'master'; branch 'ci/docker-jenkins' } }
       steps {
         withCredentials([file(credentialsId: env.ENV_CRED_ID, variable: 'ENV_FILE')]) {
           sh '''
@@ -35,7 +35,7 @@ pipeline {
       }
     }
     stage('Health check') {
-      when { branch 'master' }
+      when { anyOf { branch 'master'; branch 'ci/docker-jenkins' } }
       steps {
         // Jenkins tidak join ke peelen-network, jadi curl dijalankan dari container sementara di network itu.
         // GIN_MODE=release menolak HTTP polos (426), jadi kirim header proxy TLS.
