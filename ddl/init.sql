@@ -319,6 +319,19 @@ CREATE TABLE IF NOT EXISTS pipeline_items (
 CREATE INDEX IF NOT EXISTS idx_pipeline_items_pipeline_status
     ON pipeline_items(pipeline_id, status, sort_order);
 
+CREATE TABLE IF NOT EXISTS shifts (
+    shift      varchar(10) PRIMARY KEY CHECK (shift IN ('pagi', 'siang', 'malam')),
+    start_time time NOT NULL,
+    end_time   time NOT NULL
+);
+
+INSERT INTO shifts (shift, start_time, end_time) VALUES
+    ('pagi', '08:00', '16:00'),
+    ('siang', '16:00', '00:00'),
+    ('malam', '00:00', '08:00')
+ON CONFLICT (shift) DO UPDATE
+SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time;
+
 -- -----------------------------------------------------
 -- Worker assignments and daily task reporting
 -- Each assignment targets a pipeline item and shift; reports are per work date.
@@ -327,7 +340,7 @@ CREATE TABLE IF NOT EXISTS pipeline_item_assignments (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     pipeline_item_id  uuid NOT NULL REFERENCES pipeline_items(id) ON DELETE RESTRICT,
     user_id           uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    shift             varchar(30) NOT NULL CHECK (length(trim(shift)) > 0),
+    shift             varchar(10) NOT NULL REFERENCES shifts(shift) ON UPDATE CASCADE ON DELETE RESTRICT,
     is_active         boolean NOT NULL DEFAULT true,
     assigned_by       uuid REFERENCES users(id) ON DELETE SET NULL,
     created_at        timestamptz NOT NULL DEFAULT now(),
@@ -344,7 +357,7 @@ CREATE TABLE IF NOT EXISTS pipeline_reports (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     pipeline_item_id     uuid NOT NULL,
     user_id              uuid NOT NULL,
-    shift                varchar(30) NOT NULL,
+    shift                varchar(10) NOT NULL REFERENCES shifts(shift) ON UPDATE CASCADE ON DELETE RESTRICT,
     report_date          date NOT NULL,
     status               varchar(20) NOT NULL DEFAULT 'IN_PROGRESS'
                          CHECK (status IN ('PENDING', 'IN_PROGRESS', 'SUBMITTED', 'COMPLETED', 'REJECTED')),

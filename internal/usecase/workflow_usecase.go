@@ -24,6 +24,11 @@ type WorkflowUsecase interface {
 	CreateVendor(context.Context, *entity.User, entity.Vendor) (*entity.Vendor, error)
 	UpdateVendor(context.Context, *entity.User, string, entity.Vendor) (*entity.Vendor, error)
 	DeleteVendor(context.Context, *entity.User, string) error
+	ListShifts(context.Context, *entity.User) ([]entity.Shift, error)
+	GetShift(context.Context, *entity.User, string) (*entity.Shift, error)
+	CreateShift(context.Context, *entity.User, entity.Shift) (*entity.Shift, error)
+	UpdateShift(context.Context, *entity.User, string, entity.Shift) (*entity.Shift, error)
+	DeleteShift(context.Context, *entity.User, string) error
 	ListMyTasks(context.Context, *entity.User, string) ([]entity.MyTask, error)
 	ListPipelineReports(context.Context, *entity.User, entity.ReportFilter) ([]entity.PipelineReport, int, error)
 	GetPipelineReport(context.Context, *entity.User, string) (*entity.PipelineReport, error)
@@ -163,6 +168,87 @@ func (u *WorkflowUsecaseImpl) DeleteVendor(ctx context.Context, actor *entity.Us
 	return u.repository.DeleteVendor(ctx, id)
 }
 
+func (u *WorkflowUsecaseImpl) ListShifts(ctx context.Context, actor *entity.User) ([]entity.Shift, error) {
+	if err := validateWorkflowActor(actor); err != nil {
+		return nil, err
+	}
+	return u.repository.ListShifts(ctx)
+}
+
+func (u *WorkflowUsecaseImpl) GetShift(ctx context.Context, actor *entity.User, shift string) (*entity.Shift, error) {
+	if err := validateWorkflowActor(actor); err != nil {
+		return nil, err
+	}
+	shift, err := normalizeShiftName(shift)
+	if err != nil {
+		return nil, err
+	}
+	return u.repository.GetShift(ctx, shift)
+}
+
+func (u *WorkflowUsecaseImpl) CreateShift(ctx context.Context, actor *entity.User, shift entity.Shift) (*entity.Shift, error) {
+	if !workflowSuperAdmin(actor) {
+		return nil, ErrForbidden
+	}
+	normalized, err := normalizeShift(shift)
+	if err != nil {
+		return nil, err
+	}
+	return u.repository.CreateShift(ctx, normalized)
+}
+
+func (u *WorkflowUsecaseImpl) UpdateShift(ctx context.Context, actor *entity.User, name string, shift entity.Shift) (*entity.Shift, error) {
+	if !workflowSuperAdmin(actor) {
+		return nil, ErrForbidden
+	}
+	name, err := normalizeShiftName(name)
+	if err != nil {
+		return nil, err
+	}
+	shift.Shift = name
+	normalized, err := normalizeShift(shift)
+	if err != nil {
+		return nil, err
+	}
+	return u.repository.UpdateShift(ctx, name, normalized)
+}
+
+func (u *WorkflowUsecaseImpl) DeleteShift(ctx context.Context, actor *entity.User, name string) error {
+	if !workflowSuperAdmin(actor) {
+		return ErrForbidden
+	}
+	name, err := normalizeShiftName(name)
+	if err != nil {
+		return err
+	}
+	return u.repository.DeleteShift(ctx, name)
+}
+
+func normalizeShift(shift entity.Shift) (entity.Shift, error) {
+	name, err := normalizeShiftName(shift.Shift)
+	if err != nil {
+		return entity.Shift{}, err
+	}
+	if !validShiftTime(shift.StartTime) || !validShiftTime(shift.EndTime) || shift.StartTime == shift.EndTime {
+		return entity.Shift{}, ErrInvalidOperationalData
+	}
+	shift.Shift = name
+	return shift, nil
+}
+
+func normalizeShiftName(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if !validShift(value) {
+		return "", ErrInvalidOperationalData
+	}
+	return value, nil
+}
+
+func validShiftTime(value string) bool {
+	parsed, err := time.Parse("15:04", value)
+	return err == nil && parsed.Format("15:04") == value
+}
+
 func (u *WorkflowUsecaseImpl) ListMyTasks(ctx context.Context, actor *entity.User, date string) ([]entity.MyTask, error) {
 	if err := validateWorkflowActor(actor); err != nil {
 		return nil, err
@@ -198,8 +284,8 @@ func (u *WorkflowUsecaseImpl) CreatePipelineReport(ctx context.Context, actor *e
 	if err := validateWorkflowActor(actor); err != nil {
 		return nil, err
 	}
-	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || strings.TrimSpace(input.Shift) == "" ||
-		len(input.Shift) > 30 || input.Status != "" && input.Status != "SUBMITTED" && input.Status != "IN_PROGRESS" ||
+	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || !validShift(input.Shift) ||
+		input.Status != "" && input.Status != "SUBMITTED" && input.Status != "IN_PROGRESS" ||
 		input.StatusRevisi != "" && input.StatusRevisi != "NONE" && input.StatusRevisi != "RESUBMITTED" ||
 		!validNoteCategory(input.NoteCategory) {
 		return nil, ErrInvalidOperationalData
@@ -210,8 +296,17 @@ func (u *WorkflowUsecaseImpl) CreatePipelineReport(ctx context.Context, actor *e
 	if input.ClosedDate != nil && input.OpenDate != nil && input.ClosedDate.Before(*input.OpenDate) {
 		return nil, ErrInvalidOperationalData
 	}
-	input.Shift = strings.TrimSpace(input.Shift)
+	input.Shift = strings.ToLower(strings.TrimSpace(input.Shift))
 	return u.repository.CreatePipelineReport(ctx, operationalAccess(actor), input)
+}
+
+func validShift(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "pagi", "siang", "malam":
+		return true
+	default:
+		return false
+	}
 }
 
 func (u *WorkflowUsecaseImpl) UpdatePipelineReport(ctx context.Context, actor *entity.User, id string, input entity.PipelineReportInput) (*entity.PipelineReport, error) {

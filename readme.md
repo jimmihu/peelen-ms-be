@@ -110,6 +110,9 @@ credentials, and valid vendor/site IDs first.
 | GET, PATCH, DELETE | `/sites/{id}` | All roles read in scope; Super Admin manages |
 | GET, POST | `/vendors` | All roles list in scope; Super Admin manages |
 | GET, PATCH, DELETE | `/vendors/{id}` | All roles read in scope; Super Admin manages |
+| GET | `/shifts` | Authenticated; returns the available shifts and their hours |
+| POST | `/shifts` | Super Admin; creates one of the predefined shift names |
+| GET, PUT, DELETE | `/shifts/{shift}` | Authenticated read; Super Admin updates hours or deletes an unused shift |
 | GET | `/me/task` | Authenticated; active assignments for current user and date |
 | GET, POST | `/pipeline-reports` | Scoped reports; assigned worker submits |
 | GET, PATCH | `/pipeline-reports/{id}` | Scoped report read/update; manager reviews in scope |
@@ -157,6 +160,23 @@ Super Admin can create and edit them; Admin reads sites/vendors attached to thei
 site scope, and vendor roles read only their assigned vendors and related sites.
 `GET /me/task?date=YYYY-MM-DD` returns active tasks assigned to the authenticated
 user, with any report already submitted for that date.
+`GET /shifts` returns `pagi` (08:00-16:00), `siang` (16:00-00:00), and `malam`
+(00:00-08:00). Assignments and pipeline reports must use one of these shift names.
+Only Super Admin can manage shifts. Create with `shift`, `start_time`, and
+`end_time` in `HH:MM` format; update only changes the hours, not the shift name.
+A shift cannot be deleted while referenced by an assignment or report.
+
+```http
+POST /api/v1/shifts
+Content-Type: application/json
+
+{"shift":"pagi","start_time":"08:00","end_time":"16:00"}
+```
+
+Use `GET /api/v1/shifts/{shift}` to read one shift, `PUT` on the same path to
+change its hours, and `DELETE` to remove an unused shift. Shift names are limited
+to `pagi`, `siang`, and `malam`; duplicate creation or deleting a shift still in
+use returns a conflict.
 
 `POST /pipeline-reports` accepts `pipeline_item_id`, `shift`, `report_date`
 (`YYYY-MM-DD`), optional `status` (`IN_PROGRESS` or `SUBMITTED`), and optional
