@@ -29,26 +29,27 @@ type Shift struct {
 }
 
 type PipelineReport struct {
-	ID             string     `json:"id"`
-	PipelineItemID string     `json:"pipeline_item_id"`
-	PipelineID     string     `json:"pipeline_id"`
-	ItemID         string     `json:"item_id"`
-	ItemName       string     `json:"item_name"`
-	VendorID       string     `json:"vendor_id"`
-	UserID         string     `json:"user_id"`
-	Username       string     `json:"username"`
-	Shift          string     `json:"shift"`
-	ReportDate     string     `json:"report_date"`
-	Status         string     `json:"status"`
-	StatusRevisi   string     `json:"status_revisi"`
-	EvidenceBefore *string    `json:"evidence_before,omitempty"`
-	EvidenceAfter  *string    `json:"evidence_after,omitempty"`
-	OpenDate       *time.Time `json:"open_date,omitempty"`
-	ClosedDate     *time.Time `json:"closed_date,omitempty"`
-	NoteCategory   *string    `json:"note_category,omitempty"`
-	Notes          *string    `json:"notes,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                       string     `json:"id"`
+	PipelineItemAssignmentID string     `json:"pipeline_item_assignment_id"`
+	PipelineItemID           string     `json:"pipeline_item_id"`
+	PipelineID               string     `json:"pipeline_id"`
+	ItemID                   string     `json:"item_id"`
+	ItemName                 string     `json:"item_name"`
+	VendorID                 string     `json:"vendor_id"`
+	UserID                   string     `json:"user_id"`
+	Username                 string     `json:"username"`
+	Shift                    string     `json:"shift"`
+	ReportDate               string     `json:"report_date"`
+	Status                   string     `json:"status"`
+	StatusRevisi             string     `json:"status_revisi"`
+	EvidenceBefore           *string    `json:"evidence_before,omitempty"`
+	EvidenceAfter            *string    `json:"evidence_after,omitempty"`
+	OpenDate                 *time.Time `json:"open_date,omitempty"`
+	ClosedDate               *time.Time `json:"closed_date,omitempty"`
+	NoteCategory             *string    `json:"note_category,omitempty"`
+	Notes                    *string    `json:"notes,omitempty"`
+	CreatedAt                time.Time  `json:"created_at"`
+	UpdatedAt                time.Time  `json:"updated_at"`
 }
 
 type PipelineReportInput struct {
@@ -111,7 +112,7 @@ type MyTask struct {
 	ItemID         string  `json:"item_id"`
 	ItemName       string  `json:"item_name"`
 	VendorID       string  `json:"vendor_id"`
-	Shift          string  `json:"shift"`
+	Shift          *string `json:"shift,omitempty"`
 	ReportDate     string  `json:"report_date"`
 	ReportID       *string `json:"report_id,omitempty"`
 	ReportStatus   *string `json:"report_status,omitempty"`

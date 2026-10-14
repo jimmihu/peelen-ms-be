@@ -56,8 +56,8 @@ CROSS JOIN users u
 WHERE u.username = 'superadmin'
 ON CONFLICT (pipeline_id, item_id) DO NOTHING;
 
-INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, shift, assigned_by)
-SELECT pi.id, worker.id, 'pagi', admin.id
+INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, assigned_by)
+SELECT pi.id, worker.id, admin.id
 FROM pipeline_items pi
 JOIN pipelines p ON p.id = pi.pipeline_id AND p.name = 'Daily Safety Inspection'
 JOIN vendors v ON v.id = p.vendor_id AND v.code = 'VND-001'
@@ -66,6 +66,6 @@ JOIN users worker ON worker.username = 'worker01'
 CROSS JOIN users admin
 WHERE admin.username = 'superadmin'
   AND i.name IN ('Inspect PPE', 'Inspect work area')
-ON CONFLICT (pipeline_item_id, user_id, shift) DO NOTHING;
+ON CONFLICT (pipeline_item_id, user_id) DO NOTHING;
 
 COMMIT;

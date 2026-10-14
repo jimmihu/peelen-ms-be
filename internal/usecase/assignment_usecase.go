@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"strings"
 
 	"peelen-ms-be/internal/domain/entity"
 	"peelen-ms-be/internal/domain/repository"
@@ -51,16 +50,14 @@ func (u *AssignmentUsecaseImpl) CreateAssignment(ctx context.Context, actor *ent
 	if actor == nil || !canManageAssignments(actor) {
 		return nil, ErrForbidden
 	}
-	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || !scopeUUIDPattern.MatchString(input.UserID) ||
-		!validShift(input.Shift) {
+	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || !scopeUUIDPattern.MatchString(input.UserID) {
 		return nil, ErrInvalidOperationalData
 	}
-	input.Shift = strings.ToLower(strings.TrimSpace(input.Shift))
 	return u.repository.CreateAssignment(ctx, operationalAccess(actor), input)
 }
 
 // UpdateAssignment only toggles is_active: pipeline reports reference the
-// (pipeline item, user, shift) key, so changing it means a new assignment.
+// assignment, so changing its pipeline item or user means a new assignment.
 func (u *AssignmentUsecaseImpl) UpdateAssignment(ctx context.Context, actor *entity.User, id string, input entity.AssignmentInput) (*entity.Assignment, error) {
 	if actor == nil || !canManageAssignments(actor) {
 		return nil, ErrForbidden
@@ -105,12 +102,6 @@ func validateAssignmentFilter(filter *entity.AssignmentFilter) error {
 		if id != "" && !scopeUUIDPattern.MatchString(id) {
 			return ErrInvalidOperationalData
 		}
-	}
-	if filter.Shift != "" {
-		if !validShift(filter.Shift) {
-			return ErrInvalidOperationalData
-		}
-		filter.Shift = strings.ToLower(strings.TrimSpace(filter.Shift))
 	}
 	return nil
 }

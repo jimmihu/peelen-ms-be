@@ -50,7 +50,7 @@ func (r *assignmentRepositoryFake) SetAssignmentActive(_ context.Context, access
 }
 
 func validAssignmentInput() entity.AssignmentInput {
-	return entity.AssignmentInput{PipelineItemID: testPipelineItemID, UserID: testWorkerID, Shift: "pagi"}
+	return entity.AssignmentInput{PipelineItemID: testPipelineItemID, UserID: testWorkerID}
 }
 
 func TestCreateAssignmentRoleMatrix(t *testing.T) {
@@ -83,17 +83,12 @@ func TestCreateAssignmentRoleMatrix(t *testing.T) {
 	}
 }
 
-func TestCreateAssignmentNormalizesShiftAndPassesScope(t *testing.T) {
+func TestCreateAssignmentPassesScope(t *testing.T) {
 	repo := &assignmentRepositoryFake{}
 	service := NewAssignmentUsecase(repo)
 	actor := &entity.User{ID: "actor", Roles: []string{"ADMIN_WORKER"}, Vendors: []string{"vendor-a"}}
-	input := validAssignmentInput()
-	input.Shift = " MALAM "
-	if _, err := service.CreateAssignment(context.Background(), actor, input); err != nil {
+	if _, err := service.CreateAssignment(context.Background(), actor, validAssignmentInput()); err != nil {
 		t.Fatal(err)
-	}
-	if repo.input.Shift != "malam" {
-		t.Fatalf("shift = %q, want malam", repo.input.Shift)
 	}
 	if repo.access.UserID != "actor" || len(repo.access.VendorIDs) != 1 || repo.access.VendorIDs[0] != "vendor-a" {
 		t.Fatalf("unexpected access passed to repository: %+v", repo.access)
@@ -107,7 +102,6 @@ func TestCreateAssignmentRejectsInvalidInput(t *testing.T) {
 	}{
 		{"invalid pipeline item", func(in *entity.AssignmentInput) { in.PipelineItemID = "abc" }},
 		{"invalid user", func(in *entity.AssignmentInput) { in.UserID = "" }},
-		{"invalid shift", func(in *entity.AssignmentInput) { in.Shift = "sore" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -230,7 +224,6 @@ func TestListAssignmentsValidatesFilter(t *testing.T) {
 	}{
 		{"invalid vendor", entity.AssignmentFilter{VendorID: "x"}},
 		{"invalid pipeline", entity.AssignmentFilter{PipelineID: "x"}},
-		{"invalid shift", entity.AssignmentFilter{Shift: "sore"}},
 		{"limit too large", entity.AssignmentFilter{Limit: 101}},
 	}
 	for _, test := range tests {

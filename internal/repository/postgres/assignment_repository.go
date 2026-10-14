@@ -40,7 +40,6 @@ func (r *AssignmentRepositoryImpl) ListAssignments(ctx context.Context, access e
 	addFilter("p.id = $%d", filter.PipelineID)
 	addFilter("pi.id = $%d", filter.PipelineItemID)
 	addFilter("a.user_id = $%d", filter.UserID)
-	addFilter("a.shift = $%d", filter.Shift)
 	if filter.IsActive != nil {
 		args = append(args, *filter.IsActive)
 		where = append(where, fmt.Sprintf("a.is_active = $%d", len(args)))
@@ -53,7 +52,7 @@ func (r *AssignmentRepositoryImpl) ListAssignments(ctx context.Context, access e
 	}
 	args = append(args, filter.Limit, (filter.Page-1)*filter.Limit)
 	result, err := r.queryAssignments(ctx, whereSQL+fmt.Sprintf(
-		" ORDER BY p.name, pi.sort_order, u.username, a.shift LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args)
+		" ORDER BY p.name, pi.sort_order, u.username LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -74,24 +73,24 @@ func (r *AssignmentRepositoryImpl) GetAssignment(ctx context.Context, access ent
 }
 
 // CreateAssignment inserts a new assignment or reactivates an inactive one with
-// the same (pipeline item, user, shift). The target must be an active WORKER
+// the same (pipeline item, user). The target must be an active WORKER
 // scoped to the pipeline's vendor, and the pipeline must be in the actor's scope.
 func (r *AssignmentRepositoryImpl) CreateAssignment(ctx context.Context, access entity.OperationalAccess, input entity.AssignmentInput) (*entity.Assignment, error) {
 	var id string
 	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, shift, assigned_by)
-		SELECT pi.id, u.id, $3, $4::uuid
+		INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, assigned_by)
+		SELECT pi.id, u.id, $3::uuid
 		FROM pipeline_items pi
 		JOIN pipelines p ON p.id = pi.pipeline_id
 		JOIN items i ON i.id = pi.item_id
 		JOIN users u ON u.id = $2::uuid
 		WHERE pi.id = $1::uuid AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE' AND i.status = 'ACTIVE'
-			AND u.is_active AND `+assignableWorkerSQL+` AND `+assignmentVendorScopeSQL(5)+`
-		ON CONFLICT (pipeline_item_id, user_id, shift) DO UPDATE
+			AND u.is_active AND `+assignableWorkerSQL+` AND `+assignmentVendorScopeSQL(4)+`
+		ON CONFLICT (pipeline_item_id, user_id) DO UPDATE
 			SET is_active = true, assigned_by = EXCLUDED.assigned_by, updated_at = now()
 			WHERE NOT pipeline_item_assignments.is_active
 		RETURNING id::text
-	`, input.PipelineItemID, input.UserID, input.Shift, access.UserID,
+	`, input.PipelineItemID, input.UserID, access.UserID,
 		workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, r.explainMissingInsert(ctx, access, input)
@@ -111,10 +110,10 @@ func (r *AssignmentRepositoryImpl) explainMissingInsert(ctx context.Context, acc
 			SELECT 1 FROM pipeline_item_assignments a
 			JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 			JOIN pipelines p ON p.id = pi.pipeline_id
-			WHERE a.pipeline_item_id = $1::uuid AND a.user_id = $2::uuid AND a.shift = $3 AND a.is_active
-				AND `+assignmentVendorScopeSQL(4)+`
+			WHERE a.pipeline_item_id = $1::uuid AND a.user_id = $2::uuid AND a.is_active
+				AND `+assignmentVendorScopeSQL(3)+`
 		)
-	`, input.PipelineItemID, input.UserID, input.Shift,
+	`, input.PipelineItemID, input.UserID,
 		workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)).Scan(&exists); err != nil {
 		return err
 	}
@@ -146,7 +145,7 @@ func (r *AssignmentRepositoryImpl) SetAssignmentActive(ctx context.Context, acce
 func (r *AssignmentRepositoryImpl) queryAssignments(ctx context.Context, whereSQL string, args []any) ([]entity.Assignment, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name, p.vendor_id::text,
-			u.id::text, u.username, a.shift, a.is_active, a.assigned_by::text, a.created_at, a.updated_at
+			u.id::text, u.username, a.is_active, a.assigned_by::text, a.created_at, a.updated_at
 		FROM `+assignmentFrom+` WHERE `+whereSQL, args...)
 	if err != nil {
 		return nil, err
@@ -158,7 +157,7 @@ func (r *AssignmentRepositoryImpl) queryAssignments(ctx context.Context, whereSQ
 		var assignedBy sql.NullString
 		if err := rows.Scan(&assignment.ID, &assignment.PipelineItemID, &assignment.PipelineID, &assignment.PipelineName,
 			&assignment.ItemID, &assignment.ItemName, &assignment.VendorID, &assignment.UserID, &assignment.Username,
-			&assignment.Shift, &assignment.IsActive, &assignedBy, &assignment.CreatedAt, &assignment.UpdatedAt); err != nil {
+			&assignment.IsActive, &assignedBy, &assignment.CreatedAt, &assignment.UpdatedAt); err != nil {
 			return nil, err
 		}
 		assignment.AssignedBy = nullStringPtr(assignedBy)

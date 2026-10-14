@@ -119,8 +119,8 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 		t.Fatalf("list assigned pipelines: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `
-		INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, shift, assigned_by)
-		VALUES ($1, $2, 'pagi', $3)
+		INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, assigned_by)
+		VALUES ($1, $2, $3)
 	`, pipelineItem.ID, workerID, actorID); err != nil {
 		t.Fatal(err)
 	}

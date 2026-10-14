@@ -334,18 +334,17 @@ SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time;
 
 -- -----------------------------------------------------
 -- Worker assignments and daily task reporting
--- Each assignment targets a pipeline item and shift; reports are per work date.
+-- Each assignment targets a pipeline item; reports are per assignment, shift and work date.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS pipeline_item_assignments (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     pipeline_item_id  uuid NOT NULL REFERENCES pipeline_items(id) ON DELETE RESTRICT,
     user_id           uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    shift             varchar(10) NOT NULL REFERENCES shifts(shift) ON UPDATE CASCADE ON DELETE RESTRICT,
     is_active         boolean NOT NULL DEFAULT true,
     assigned_by       uuid REFERENCES users(id) ON DELETE SET NULL,
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (pipeline_item_id, user_id, shift)
+    UNIQUE (pipeline_item_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_assignments_user_active
@@ -355,8 +354,7 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_assignments_item_active
 
 CREATE TABLE IF NOT EXISTS pipeline_reports (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    pipeline_item_id     uuid NOT NULL,
-    user_id              uuid NOT NULL,
+    pipeline_item_assignment_id uuid NOT NULL REFERENCES pipeline_item_assignments(id) ON DELETE RESTRICT,
     shift                varchar(10) NOT NULL REFERENCES shifts(shift) ON UPDATE CASCADE ON DELETE RESTRICT,
     report_date          date NOT NULL,
     status               varchar(20) NOT NULL DEFAULT 'IN_PROGRESS'
@@ -365,19 +363,13 @@ CREATE TABLE IF NOT EXISTS pipeline_reports (
                          CHECK (status_revisi IN ('NONE', 'REQUESTED', 'RESUBMITTED')),
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now(),
-    FOREIGN KEY (pipeline_item_id, user_id, shift)
-        REFERENCES pipeline_item_assignments(pipeline_item_id, user_id, shift)
-        ON DELETE RESTRICT,
-    UNIQUE (pipeline_item_id, user_id, shift, report_date),
-    UNIQUE (id, user_id)
+    UNIQUE (pipeline_item_assignment_id, shift, report_date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_reports_date_status
     ON pipeline_reports(report_date, status, status_revisi);
-CREATE INDEX IF NOT EXISTS idx_pipeline_reports_user_date
-    ON pipeline_reports(user_id, report_date DESC);
-CREATE INDEX IF NOT EXISTS idx_pipeline_reports_item_date
-    ON pipeline_reports(pipeline_item_id, report_date DESC);
+CREATE INDEX IF NOT EXISTS idx_pipeline_reports_assignment_date
+    ON pipeline_reports(pipeline_item_assignment_id, report_date DESC);
 
 CREATE TABLE IF NOT EXISTS pipeline_report_details (
     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -87,7 +87,7 @@ func (h *AssignmentHandler) DeleteAssignment(c *gin.Context) {
 func assignmentFilterFromQuery(c *gin.Context) (entity.AssignmentFilter, error) {
 	filter := entity.AssignmentFilter{
 		VendorID: c.Query("vendor_id"), SiteID: c.Query("site_id"), PipelineID: c.Query("pipeline_id"),
-		PipelineItemID: c.Query("pipeline_item_id"), UserID: c.Query("user_id"), Shift: c.Query("shift"),
+		PipelineItemID: c.Query("pipeline_item_id"), UserID: c.Query("user_id"),
 		Page: 1, Limit: 20,
 	}
 	var err error

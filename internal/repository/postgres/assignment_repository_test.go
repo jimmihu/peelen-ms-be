@@ -77,7 +77,7 @@ func TestAssignmentRepositoryScopesAndLifecycle(t *testing.T) {
 	adminWorker := entity.OperationalAccess{UserID: actorID, Roles: []string{"ADMIN_WORKER"}, VendorIDs: []string{vendorID}}
 	siteAdmin := entity.OperationalAccess{UserID: actorID, Roles: []string{"ADMIN"}, SiteIDs: []string{siteID}}
 	outsider := entity.OperationalAccess{UserID: actorID, Roles: []string{"ADMIN_WORKER"}, VendorIDs: []string{otherVendorID}}
-	input := entity.AssignmentInput{PipelineItemID: pipelineItemID, UserID: workerID, Shift: "pagi"}
+	input := entity.AssignmentInput{PipelineItemID: pipelineItemID, UserID: workerID}
 
 	if _, err := repo.CreateAssignment(ctx, outsider, input); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("out-of-scope create error = %v, want ErrNotFound", err)
