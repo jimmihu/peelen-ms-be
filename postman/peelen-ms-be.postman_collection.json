@@ -97,12 +97,8 @@
         "header": [],
         "url": {
           "raw": "{{base_url}}/health",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "health"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["health"]
         },
         "auth": {
           "type": "noauth"
@@ -124,15 +120,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/login",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "login"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
             },
             "body": {
               "mode": "raw",
@@ -171,15 +160,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/refresh",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "refresh"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
             },
             "auth": {
               "type": "noauth"
@@ -210,15 +192,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/me",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "me"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
             }
           }
         },
@@ -234,15 +209,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/password",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "password"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "password"]
             },
             "body": {
               "mode": "raw",
@@ -262,15 +230,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/logout",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "logout"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
             },
             "description": "Logout current session. Refresh token diambil dari HTTP-only cookie."
           }
@@ -282,15 +243,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/logout-all",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "logout-all"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout-all"]
             }
           }
         }
@@ -307,14 +261,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/users",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users"]
             }
           }
         },
@@ -330,14 +278,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/users",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users"]
             },
             "body": {
               "mode": "raw",
@@ -371,15 +313,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/users/{{user_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users",
-                "{{user_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "{{user_id}}"]
             }
           }
         },
@@ -395,15 +330,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/users/{{user_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users",
-                "{{user_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "{{user_id}}"]
             },
             "body": {
               "mode": "raw",
@@ -429,16 +357,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/users/{{user_id}}/reset-password",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users",
-                "{{user_id}}",
-                "reset-password"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "reset-password"]
             },
             "body": {
               "mode": "raw",
@@ -464,16 +384,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/users/{{user_id}}/roles",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users",
-                "{{user_id}}",
-                "roles"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "roles"]
             },
             "body": {
               "mode": "raw",
@@ -499,16 +411,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/users/{{user_id}}/scopes",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users",
-                "{{user_id}}",
-                "scopes"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "scopes"]
             },
             "body": {
               "mode": "raw",
@@ -529,16 +433,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/users/{{user_id}}/sessions",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "users",
-                "{{user_id}}",
-                "sessions"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "sessions"]
             },
             "description": "SUPER_ADMIN saja."
           }
@@ -556,14 +452,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/roles",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "roles"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "roles"]
             }
           }
         },
@@ -574,14 +464,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/audit-logs?limit=100",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "audit-logs"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit-logs"],
               "query": [
                 {
                   "key": "limit",
@@ -631,14 +515,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/sites",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sites"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sites"]
             }
           }
         },
@@ -649,15 +527,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/sites/{{site_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sites",
-                "{{site_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sites", "{{site_id}}"]
             }
           }
         },
@@ -673,14 +544,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/sites",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sites"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sites"]
             },
             "body": {
               "mode": "raw",
@@ -718,15 +583,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/sites/{{site_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sites",
-                "{{site_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sites", "{{site_id}}"]
             },
             "body": {
               "mode": "raw",
@@ -746,15 +604,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/sites/{{site_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sites",
-                "{{site_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sites", "{{site_id}}"]
             }
           }
         }
@@ -771,14 +622,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/vendors",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "vendors"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vendors"]
             }
           }
         },
@@ -789,15 +634,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/vendors/{{vendor_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "vendors",
-                "{{vendor_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vendors", "{{vendor_id}}"]
             }
           }
         },
@@ -813,14 +651,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/vendors",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "vendors"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vendors"]
             },
             "body": {
               "mode": "raw",
@@ -858,15 +690,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/vendors/{{vendor_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "vendors",
-                "{{vendor_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vendors", "{{vendor_id}}"]
             },
             "body": {
               "mode": "raw",
@@ -886,15 +711,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/vendors/{{vendor_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "vendors",
-                "{{vendor_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "vendors", "{{vendor_id}}"]
             }
           }
         }
@@ -911,14 +729,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/shifts",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "shifts"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "shifts"]
             }
           }
         },
@@ -929,15 +741,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/shifts/{{shift}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "shifts",
-                "{{shift}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "shifts", "{{shift}}"]
             }
           }
         },
@@ -953,14 +758,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/shifts",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "shifts"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "shifts"]
             },
             "body": {
               "mode": "raw",
@@ -998,15 +797,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/shifts/{{shift}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "shifts",
-                "{{shift}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "shifts", "{{shift}}"]
             },
             "body": {
               "mode": "raw",
@@ -1026,15 +818,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/shifts/{{shift}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "shifts",
-                "{{shift}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "shifts", "{{shift}}"]
             }
           }
         }
@@ -1051,15 +836,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/me/tasks",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "me",
-                "tasks"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "me", "tasks"],
               "query": [
                 {
                   "key": "date",
@@ -1084,14 +862,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/items?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "items"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "items"],
               "query": [
                 {
                   "key": "page",
@@ -1133,15 +905,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/items/{{item_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "items",
-                "{{item_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "items", "{{item_id}}"]
             }
           }
         },
@@ -1157,14 +922,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/items",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "items"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "items"]
             },
             "body": {
               "mode": "raw",
@@ -1202,15 +961,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/items/{{item_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "items",
-                "{{item_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "items", "{{item_id}}"]
             },
             "body": {
               "mode": "raw",
@@ -1230,15 +982,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/items/{{item_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "items",
-                "{{item_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "items", "{{item_id}}"]
             }
           }
         }
@@ -1255,14 +1000,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines"],
               "query": [
                 {
                   "key": "page",
@@ -1304,15 +1043,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines/{{pipeline_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines",
-                "{{pipeline_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines", "{{pipeline_id}}"]
             }
           }
         },
@@ -1328,14 +1060,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines"]
             },
             "body": {
               "mode": "raw",
@@ -1373,15 +1099,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines/{{pipeline_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines",
-                "{{pipeline_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines", "{{pipeline_id}}"]
             },
             "body": {
               "mode": "raw",
@@ -1401,15 +1120,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines/{{pipeline_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines",
-                "{{pipeline_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines", "{{pipeline_id}}"]
             }
           }
         },
@@ -1420,16 +1132,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines/{{pipeline_id}}/items?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines",
-                "{{pipeline_id}}",
-                "items"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines", "{{pipeline_id}}", "items"],
               "query": [
                 {
                   "key": "page",
@@ -1461,16 +1165,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/pipelines/{{pipeline_id}}/items",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipelines",
-                "{{pipeline_id}}",
-                "items"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipelines", "{{pipeline_id}}", "items"]
             },
             "body": {
               "mode": "raw",
@@ -1510,15 +1206,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-items/{{pipeline_item_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipeline-items",
-                "{{pipeline_item_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipeline-items", "{{pipeline_item_id}}"]
             }
           }
         },
@@ -1534,15 +1223,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-items/{{pipeline_item_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipeline-items",
-                "{{pipeline_item_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipeline-items", "{{pipeline_item_id}}"]
             },
             "body": {
               "mode": "raw",
@@ -1562,15 +1244,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-items/{{pipeline_item_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipeline-items",
-                "{{pipeline_item_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipeline-items", "{{pipeline_item_id}}"]
             }
           }
         }
@@ -1587,14 +1262,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-reports?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipeline-reports"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipeline-reports"],
               "query": [
                 {
                   "key": "page",
@@ -1641,9 +1310,7 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-reports/{{pipeline_report_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
+              "host": ["{{base_url}}"],
               "path": [
                 "api",
                 "v1",
@@ -1665,14 +1332,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-reports",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "pipeline-reports"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pipeline-reports"]
             },
             "body": {
               "mode": "raw",
@@ -1710,9 +1371,7 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/pipeline-reports/{{pipeline_report_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
+              "host": ["{{base_url}}"],
               "path": [
                 "api",
                 "v1",
@@ -1744,14 +1403,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventories?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventories"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventories"],
               "query": [
                 {
                   "key": "page",
@@ -1798,15 +1451,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventories/{{inventory_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventories",
-                "{{inventory_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventories", "{{inventory_id}}"]
             }
           }
         },
@@ -1817,14 +1463,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventories",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventories"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventories"]
             },
             "body": {
               "mode": "formdata",
@@ -1885,15 +1525,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventories/{{inventory_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventories",
-                "{{inventory_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventories", "{{inventory_id}}"]
             },
             "body": {
               "mode": "formdata",
@@ -1931,15 +1564,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventories/{{inventory_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventories",
-                "{{inventory_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventories", "{{inventory_id}}"]
             }
           }
         }
@@ -1956,14 +1582,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory-reports?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventory-reports"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventory-reports"],
               "query": [
                 {
                   "key": "page",
@@ -2010,9 +1630,7 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory-reports/{{inventory_report_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
+              "host": ["{{base_url}}"],
               "path": [
                 "api",
                 "v1",
@@ -2034,14 +1652,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory-reports",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "inventory-reports"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "inventory-reports"]
             },
             "body": {
               "mode": "raw",
@@ -2079,9 +1691,7 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory-reports/{{inventory_report_id}}/review",
-              "host": [
-                "{{base_url}}"
-              ],
+              "host": ["{{base_url}}"],
               "path": [
                 "api",
                 "v1",
@@ -2115,14 +1725,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/policies?page=1&limit=20",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "policies"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies"],
               "query": [
                 {
                   "key": "page",
@@ -2164,15 +1768,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/policies/{{policy_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "policies",
-                "{{policy_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies", "{{policy_id}}"]
             }
           }
         },
@@ -2183,16 +1780,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/policies/{{policy_id}}/file",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "policies",
-                "{{policy_id}}",
-                "file"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies", "{{policy_id}}", "file"]
             },
             "description": "Get signed download URL for policy PDF file. Returns URL with expiration time."
           }
@@ -2204,14 +1793,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/policies",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "policies"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies"]
             },
             "body": {
               "mode": "formdata",
@@ -2256,15 +1839,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/policies/{{policy_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "policies",
-                "{{policy_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies", "{{policy_id}}"]
             },
             "body": {
               "mode": "formdata",
@@ -2297,15 +1873,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/policies/{{policy_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "policies",
-                "{{policy_id}}"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies", "{{policy_id}}"]
             }
           }
         }
@@ -2322,15 +1891,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/dashboard/report",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "dashboard",
-                "report"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dashboard", "report"],
               "query": [
                 {
                   "key": "date",
@@ -2359,15 +1921,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/reports/daily",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "reports",
-                "daily"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "reports", "daily"],
               "query": [
                 {
                   "key": "date",
@@ -2387,6 +1942,36 @@
               ]
             },
             "description": "Get daily report. Filter options: date (defaults to today), site_id, vendor_id"
+          }
+        },
+        {
+          "name": "Get Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dashboard", "summary"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get dashboard summary. Filter options: date (defaults to today), site_id, vendor_id. If site_id or vendor_id is empty, data is retrieved for all sites or vendors within the user's access scope."
           }
         }
       ]
