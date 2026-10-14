@@ -141,7 +141,7 @@ func NewRouter(cfg Config) *gin.Engine {
 	pipelineItems.PATCH("/:id", cfg.OperationalHandler.Update(entity.ResourcePipelineItem))
 	pipelineItems.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourcePipelineItem))
 
-	operations.GET("/dashboard", cfg.DashboardHandler.GetDashboard)
+	operations.GET("/dashboard/summary", cfg.DashboardHandler.GetDashboard)
 
 	return router
 }
