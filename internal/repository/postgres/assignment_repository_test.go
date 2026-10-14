@@ -45,7 +45,7 @@ func TestAssignmentRepositoryScopesAndLifecycle(t *testing.T) {
 	vendorID := insertID(`INSERT INTO vendors (code, name) VALUES ($1, 'Assignment Vendor') RETURNING id::text`, "AS"+suffix)
 	otherVendorID := insertID(`INSERT INTO vendors (code, name) VALUES ($1, 'Other Vendor') RETURNING id::text`, "AO"+suffix)
 	itemID := insertID(`INSERT INTO items (name, created_by) VALUES ('Assignment item', $1) RETURNING id::text`, actorID)
-	pipelineID := insertID(`INSERT INTO pipelines (vendor_id, name) VALUES ($1, 'Assignment pipeline') RETURNING id::text`, vendorID)
+	pipelineID := insertID(`INSERT INTO pipelines (vendor_id, site_id, name) VALUES ($1, $2, 'Assignment pipeline') RETURNING id::text`, vendorID, siteID)
 	pipelineItemID := insertID(`INSERT INTO pipeline_items (pipeline_id, item_id) VALUES ($1, $2) RETURNING id::text`, pipelineID, itemID)
 	defer func() {
 		_, _ = db.ExecContext(ctx, `DELETE FROM pipeline_item_assignments WHERE pipeline_item_id = $1`, pipelineItemID)

@@ -136,3 +136,20 @@ func TestOperationalUsecaseRejectsScopeTransferAndInvalidInventoryValues(t *test
 func operationalStringPtr(value string) *string {
 	return &value
 }
+
+func TestPipelineCreateRequiresSite(t *testing.T) {
+	vendor := "10000000-0000-4000-8000-000000000001"
+	name := "Boiler Area"
+	err := validateOperationalInput(entity.ResourcePipeline, entity.OperationalInput{VendorID: &vendor, Name: &name}, true)
+	if err == nil {
+		t.Fatal("expected pipeline without site_id to be rejected")
+	}
+	site := "20000000-0000-4000-8000-000000000001"
+	if err := validateOperationalInput(entity.ResourcePipeline, entity.OperationalInput{VendorID: &vendor, Name: &name, SiteID: &site}, true); err != nil {
+		t.Fatalf("valid pipeline rejected: %v", err)
+	}
+	bad := "not-a-uuid"
+	if err := validateOperationalInput(entity.ResourcePipeline, entity.OperationalInput{VendorID: &vendor, Name: &name, SiteID: &bad}, true); err == nil {
+		t.Fatal("expected invalid site_id to be rejected")
+	}
+}

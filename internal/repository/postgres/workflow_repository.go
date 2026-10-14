@@ -235,6 +235,20 @@ func replaceVendorSites(ctx context.Context, tx *sql.Tx, vendorID string, siteID
 			return translateOperationalDBError(err)
 		}
 	}
+	// A site still used by active pipelines cannot be removed from the vendor.
+	var orphaned bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM pipelines p
+			WHERE p.vendor_id = $1 AND p.status = 'ACTIVE'
+				AND NOT EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = p.site_id)
+		)
+	`, vendorID).Scan(&orphaned); err != nil {
+		return err
+	}
+	if orphaned {
+		return repository.ErrConflict
+	}
 	return nil
 }
 

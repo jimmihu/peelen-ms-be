@@ -78,10 +78,26 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}
 
 	pipeline, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
-		VendorID: &vendorID, Name: stringPtr("Daily Safety"),
+		VendorID: &vendorID, SiteID: &siteID, Name: stringPtr("Daily Safety"),
 	}, "")
 	if err != nil {
 		t.Fatalf("create pipeline: %v", err)
+	}
+	if pipeline.SiteID == nil || *pipeline.SiteID != siteID {
+		t.Fatalf("pipeline site_id = %v, want %s", pipeline.SiteID, siteID)
+	}
+	var otherSiteID string
+	if err := db.QueryRowContext(ctx, `INSERT INTO sites (code, name) VALUES ($1, 'Unlinked Site') RETURNING id::text`, "OU"+suffix).Scan(&otherSiteID); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(ctx, `DELETE FROM sites WHERE id = $1`, otherSiteID)
+	if _, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &otherSiteID, Name: stringPtr("Unlinked"),
+	}, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("pipeline at a site not linked to the vendor: err = %v, want ErrNotFound", err)
+	}
+	if _, err := NewWorkflowRepository(db).UpdateVendor(ctx, vendorID, entity.Vendor{}, []string{}); !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("removing a site used by pipelines: err = %v, want ErrConflict", err)
 	}
 	adminAccess := entity.OperationalAccess{
 		UserID: actorID, Roles: []string{"ADMIN"}, SiteIDs: []string{siteID},
@@ -95,7 +111,7 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}
 	outsideScopeVendorID := "30000000-0000-4000-8000-000000000001"
 	if _, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
-		VendorID: &outsideScopeVendorID, Name: stringPtr("Out of scope"),
+		VendorID: &outsideScopeVendorID, SiteID: &siteID, Name: stringPtr("Out of scope"),
 	}, ""); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("expected out-of-scope vendor to be hidden, got %v", err)
 	}

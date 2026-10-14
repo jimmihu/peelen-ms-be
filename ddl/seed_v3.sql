@@ -3,7 +3,7 @@
 -- Jalankan SETELAH init.sql (dan migrations). Script ini MENGHAPUS semua data
 -- lalu mengisi ulang: master role & shift, 10 PLTU, 5 vendor, superadmin,
 -- 1 admin per PLTU, 1 admin worker per vendor, 10 worker per vendor,
--- 9 pipeline area (55 item lokasi) per vendor, assignment task tiap worker,
+-- 9 pipeline area (55 item lokasi) per site vendor, assignment task tiap worker,
 -- pipeline report 7 hari terakhir (detail + history, tanpa review admin),
 -- inventory dan laporannya.
 -- Password semua user: Password123!
@@ -62,6 +62,9 @@ ALTER TABLE pipeline_report_history
     DROP CONSTRAINT IF EXISTS pipeline_report_history_new_revision_check,
     ADD CONSTRAINT pipeline_report_history_new_status_check CHECK (new_status IN ('IN_PROGRESS', 'COMPLETED')),
     ADD CONSTRAINT pipeline_report_history_new_revision_check CHECK (new_revision IN ('NONE', 'SUBMITTED'));
+
+-- Pipelines belong to a site (migration 006)
+ALTER TABLE pipelines ADD COLUMN IF NOT EXISTS site_id uuid REFERENCES sites(id);
 
 INSERT INTO shifts (shift, start_time, end_time) VALUES
     ('DAY',     '08:00', '16:00'),
@@ -257,10 +260,11 @@ SELECT DISTINCT f.item_name, sa.id
 FROM pipeline_fixture f
 CROSS JOIN (SELECT id FROM users WHERE username = 'superadmin') sa;
 
--- pipelines: 9 area per vendor, dibuat oleh admin worker vendor tsb
-INSERT INTO pipelines (vendor_id, name, created_by)
-SELECT v.id, f.pipeline_name, aw.id
+-- pipelines: 9 area per site vendor, dibuat oleh admin worker vendor tsb
+INSERT INTO pipelines (vendor_id, site_id, name, created_by)
+SELECT v.id, vs.site_id, f.pipeline_name, aw.id
 FROM vendors v
+JOIN vendor_sites vs ON vs.vendor_id = v.id
 CROSS JOIN (SELECT DISTINCT pipeline_name FROM pipeline_fixture) f
 JOIN user_scopes us ON us.vendor_id = v.id
 JOIN users aw ON aw.id = us.user_id AND aw.username LIKE 'aw.%';
@@ -273,21 +277,28 @@ JOIN items i ON i.name = f.item_name;
 
 -- -----------------------------------------------------
 -- pipeline_item_assignments
--- Pipeline tiap vendor diurutkan per nama (1..9). Worker NN dapat semua item
--- di pipeline ke-((NN-1) % 9 + 1), jadi worker 10 berbagi area dengan worker 01.
--- Di-assign oleh admin worker vendor tsb.
+-- Worker 01-05 tiap vendor kerja di site pertama vendor (urut kode site),
+-- worker 06-10 di site kedua. Di tiap site, worker ke-n (1..5) dapat semua item
+-- area ke-n (area diurutkan per nama). Di-assign oleh admin worker vendor tsb.
 -- -----------------------------------------------------
-WITH numbered_pipelines AS (
-    SELECT p.*, row_number() OVER (PARTITION BY p.vendor_id ORDER BY p.name) AS pipeline_no,
-           count(*) OVER (PARTITION BY p.vendor_id) AS pipeline_count
+WITH vendor_site_no AS (
+    SELECT vs.vendor_id, vs.site_id,
+           row_number() OVER (PARTITION BY vs.vendor_id ORDER BY s.code) AS site_no
+    FROM vendor_sites vs JOIN sites s ON s.id = vs.site_id
+),
+numbered_pipelines AS (
+    SELECT p.*, vsn.site_no,
+           row_number() OVER (PARTITION BY p.vendor_id, p.site_id ORDER BY p.name) AS pipeline_no
     FROM pipelines p
+    JOIN vendor_site_no vsn ON vsn.vendor_id = p.vendor_id AND vsn.site_id = p.site_id
 )
 INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, assigned_by, created_at, updated_at)
-SELECT pi.id, w.id, np.created_by, current_date - 14, current_date - 14
+SELECT pi.id, w.id, np.created_by, current_date - 100, current_date - 100
 FROM users w
 JOIN user_scopes ws ON ws.user_id = w.id
 JOIN numbered_pipelines np ON np.vendor_id = ws.vendor_id
-    AND np.pipeline_no = (substring(w.username FROM 10 FOR 2)::int - 1) % np.pipeline_count + 1
+    AND np.site_no = CASE WHEN substring(w.username FROM 10 FOR 2)::int <= 5 THEN 1 ELSE 2 END
+    AND np.pipeline_no = (substring(w.username FROM 10 FOR 2)::int - 1) % 5 + 1
 JOIN pipeline_items pi ON pi.pipeline_id = np.id
 WHERE w.username LIKE 'w.vnd%';
 

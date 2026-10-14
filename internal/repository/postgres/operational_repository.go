@@ -57,10 +57,12 @@ func (r *OperationalRepositoryImpl) ListOperational(ctx context.Context, access 
 			return nil, 0, entity.ErrInvalidID
 		}
 		switch resource {
-		case entity.ResourceInventory, entity.ResourcePolicy, entity.ResourcePipeline:
+		case entity.ResourcePipeline:
+			where = append(where, fmt.Sprintf("t.site_id = $%d", next))
+		case entity.ResourceInventory, entity.ResourcePolicy:
 			where = append(where, fmt.Sprintf("EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = t.vendor_id AND vs.site_id = $%d)", next))
 		case entity.ResourcePipelineItem:
-			where = append(where, fmt.Sprintf("EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = $%d)", next))
+			where = append(where, fmt.Sprintf("p.site_id = $%d", next))
 		case entity.ResourceItem:
 			where = append(where, fmt.Sprintf("EXISTS (SELECT 1 FROM pipeline_items pi JOIN pipelines px ON px.id = pi.pipeline_id JOIN vendor_sites vs ON vs.vendor_id = px.vendor_id WHERE pi.item_id = t.id AND vs.site_id = $%d)", next))
 		}
@@ -166,14 +168,16 @@ func (r *OperationalRepositoryImpl) CreateOperational(ctx context.Context, acces
 		`, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs),
 			*input.VendorID, strings.TrimSpace(*input.Name), input.FileURL, access.UserID).Scan(&id)
 	case entity.ResourcePipeline:
+		// The site must be one the vendor works at.
 		err = tx.QueryRowContext(ctx, `
-			INSERT INTO pipelines (vendor_id, name, description, created_by)
-			SELECT $4, $5, $6, $7
+			INSERT INTO pipelines (vendor_id, site_id, name, description, created_by)
+			SELECT v.id, vs.site_id, $5, $6, $7
 			FROM vendors v
+			JOIN vendor_sites vs ON vs.vendor_id = v.id AND vs.site_id = $8
 			WHERE v.id = $4 AND `+scopePredicate("v.id", 1)+`
 			RETURNING id::text
 		`, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs),
-			*input.VendorID, strings.TrimSpace(*input.Name), input.Description, access.UserID).Scan(&id)
+			*input.VendorID, strings.TrimSpace(*input.Name), input.Description, access.UserID, *input.SiteID).Scan(&id)
 	case entity.ResourceItem:
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO items (name, description, created_by)
@@ -333,15 +337,15 @@ func operationalQuery(resource entity.OperationalResource, access entity.Operati
 	switch resource {
 	case entity.ResourceInventory:
 		from = "inventories t"
-		selectSQL = operationalSelect("t.id", "t.vendor_id", "NULL::text", "NULL::text", "t.item", "t.jenis_item", "t.qty", "t.img", "t.status_condition", "NULL::text", "NULL::text", "NULL::text", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
+		selectSQL = operationalSelect("t.id", "t.vendor_id", "NULL::uuid", "NULL::text", "NULL::text", "t.item", "t.jenis_item", "t.qty", "t.img", "t.status_condition", "NULL::text", "NULL::text", "NULL::text", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
 		scope = scopePredicate("t.vendor_id", 1)
 	case entity.ResourcePolicy:
 		from = "policies t"
-		selectSQL = operationalSelect("t.id", "t.vendor_id", "t.name", "NULL::text", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "t.file_url", "NULL::text", "NULL::text", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
+		selectSQL = operationalSelect("t.id", "t.vendor_id", "NULL::uuid", "t.name", "NULL::text", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "t.file_url", "NULL::text", "NULL::text", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
 		scope = scopePredicate("t.vendor_id", 1)
 	case entity.ResourcePipeline:
 		from = "pipelines t"
-		selectSQL = operationalSelect("t.id", "t.vendor_id", "t.name", "t.description", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "NULL::text", "NULL::text", "NULL::text", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
+		selectSQL = operationalSelect("t.id", "t.vendor_id", "t.site_id", "t.name", "t.description", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "NULL::text", "NULL::text", "NULL::text", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
 		scope = scopePredicate("t.vendor_id", 1) + ` AND (NOT $5::boolean OR EXISTS (
 			SELECT 1 FROM pipeline_items pi JOIN pipeline_item_assignments a ON a.pipeline_item_id = pi.id
 			JOIN items i ON i.id = pi.item_id
@@ -351,12 +355,12 @@ func operationalQuery(resource entity.OperationalResource, access entity.Operati
 		args = append(args, access.UserID, hasOperationalRole(access.Roles, "WORKER"))
 	case entity.ResourceItem:
 		from = "items t"
-		selectSQL = operationalSelect("t.id", "NULL::uuid", "t.name", "t.description", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "NULL::text", "NULL::uuid", "t.id", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
+		selectSQL = operationalSelect("t.id", "NULL::uuid", "NULL::uuid", "t.name", "t.description", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "NULL::text", "NULL::uuid", "t.id", "NULL::integer", "t.status", "t.created_by", "t.created_at", "t.updated_at")
 		scope = itemScopePredicate(1)
 		args = append(args, access.UserID, hasOperationalRole(access.Roles, "WORKER"))
 	case entity.ResourcePipelineItem:
 		from = "pipeline_items t JOIN pipelines p ON p.id = t.pipeline_id JOIN items i ON i.id = t.item_id"
-		selectSQL = operationalSelect("t.id", "p.vendor_id", "i.name", "i.description", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "NULL::text", "t.pipeline_id", "t.item_id", "t.sort_order", "t.status", "t.created_by", "t.created_at", "t.updated_at")
+		selectSQL = operationalSelect("t.id", "p.vendor_id", "p.site_id", "i.name", "i.description", "NULL::text", "NULL::text", "NULL::integer", "NULL::text", "NULL::text", "NULL::text", "t.pipeline_id", "t.item_id", "t.sort_order", "t.status", "t.created_by", "t.created_at", "t.updated_at")
 		scope = scopePredicate("p.vendor_id", 1) + ` AND (NOT $5::boolean OR (
 			t.status = 'ACTIVE' AND p.status = 'ACTIVE' AND i.status = 'ACTIVE' AND EXISTS (
 				SELECT 1 FROM pipeline_item_assignments a
@@ -416,10 +420,10 @@ func getOperationalTx(ctx context.Context, tx *sql.Tx, access entity.Operational
 
 func scanOperationalRecord(row interface{ Scan(...any) error }) (entity.OperationalRecord, error) {
 	var record entity.OperationalRecord
-	var vendorID, name, description, item, itemType, image, condition, fileURL, pipelineID, itemID, status, createdBy sql.NullString
+	var vendorID, siteID, name, description, item, itemType, image, condition, fileURL, pipelineID, itemID, status, createdBy sql.NullString
 	var quantity, sortOrder sql.NullInt64
 	err := row.Scan(
-		&record.ID, &vendorID, &name, &description, &item, &itemType,
+		&record.ID, &vendorID, &siteID, &name, &description, &item, &itemType,
 		&quantity, &image, &condition, &fileURL, &pipelineID, &itemID,
 		&sortOrder, &status, &createdBy, &record.CreatedAt, &record.UpdatedAt,
 	)
@@ -427,6 +431,7 @@ func scanOperationalRecord(row interface{ Scan(...any) error }) (entity.Operatio
 		return record, err
 	}
 	record.VendorID = operationalStringPtr(vendorID)
+	record.SiteID = operationalStringPtr(siteID)
 	record.Name = name.String
 	record.Description = operationalStringPtr(description)
 	record.Item = item.String

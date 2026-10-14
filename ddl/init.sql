@@ -277,6 +277,7 @@ CREATE INDEX IF NOT EXISTS idx_policies_vendor_status
 CREATE TABLE IF NOT EXISTS pipelines (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     vendor_id   uuid NOT NULL REFERENCES vendors(id) ON DELETE RESTRICT,
+    site_id     uuid NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
     name        varchar(150) NOT NULL,
     description text,
     status      varchar(10) NOT NULL DEFAULT 'ACTIVE'
@@ -285,6 +286,7 @@ CREATE TABLE IF NOT EXISTS pipelines (
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_pipelines_site_id ON pipelines(site_id);
 
 CREATE INDEX IF NOT EXISTS idx_pipelines_vendor_status
     ON pipelines(vendor_id, status);
