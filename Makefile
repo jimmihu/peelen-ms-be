@@ -39,8 +39,12 @@ db-seed:
 db-reset:
 	set -a; . ./.env; set +a; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f ddl/seed_v3.sql
 
+# Applies migrations in order. Not every migration can be re-run (003 drops
+# columns it reads), so on an existing database pass only the new ones, e.g.
+#   make db-migrate MIGRATIONS="ddl/migrations/006_pipeline_site.sql ddl/migrations/007_scoring.sql"
+MIGRATIONS ?= $(sort $(wildcard ddl/migrations/*.sql))
 db-migrate:
-	set -a; . ./.env; set +a; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f ddl/migrations/001_refresh_token_session.sql
+	set -a; . ./.env; set +a; for f in $(MIGRATIONS); do echo "== $$f"; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f "$$f" || exit 1; done
 
 # Set BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD in the environment first.
 bootstrap-admin:

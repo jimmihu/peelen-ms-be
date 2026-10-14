@@ -14,6 +14,12 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 TRUNCATE TABLE
+    score_period_item_results,
+    score_period_results,
+    score_rule_levels,
+    score_rule_items,
+    score_rules,
+    task_day_facts,
     inventory_reports,
     pipeline_report_history,
     pipeline_report_details,
