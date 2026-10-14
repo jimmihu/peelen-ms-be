@@ -1,0 +1,13 @@
+$kind: http-request
+description: "List items belonging to a specific pipeline. Filter options: status (default: ACTIVE), page, limit (1-100)"
+url: "{{base_url}}/api/v1/pipelines/{{pipeline_id}}/items"
+method: GET
+params:
+  - key: page
+    value: "1"
+  - key: limit
+    value: "20"
+  - key: status
+    value: "ACTIVE"
+    disabled: true
+order: 6000

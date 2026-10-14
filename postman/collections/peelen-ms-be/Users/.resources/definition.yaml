@@ -1,3 +1,0 @@
-$kind: collection
-description: Butuh role SUPER_ADMIN atau ADMIN_WORKER. Roles, scopes, dan sessions hanya SUPER_ADMIN.
-order: 3000

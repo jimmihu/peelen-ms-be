@@ -1,0 +1,9 @@
+$kind: http-request
+description: "Get current user's assigned tasks. Optional date filter (defaults to today)"
+url: "{{base_url}}/api/v1/me/tasks"
+method: GET
+params:
+  - key: date
+    value: ""
+    disabled: true
+order: 1000

@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{base_url}}/api/v1/pipeline-items/{{pipeline_item_id}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sort_order": 2,
+      "status": "ACTIVE"
+    }
+order: 2000

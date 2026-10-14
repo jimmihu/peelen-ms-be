@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{base_url}}/api/v1/shifts/{{shift}}"
+method: PUT
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "shift": "{{shift}}",
+      "start_time": "07:00",
+      "end_time": "15:00"
+    }
+order: 4000

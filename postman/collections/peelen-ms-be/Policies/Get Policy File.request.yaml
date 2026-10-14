@@ -1,0 +1,5 @@
+$kind: http-request
+description: "Get signed download URL for policy PDF file. Returns URL with expiration time."
+url: "{{base_url}}/api/v1/policies/{{policy_id}}/file"
+method: GET
+order: 2500
