@@ -16,6 +16,7 @@ func TestWorkflowRoutesAreRegistered(t *testing.T) {
 		AdminHandler:       &handler.AdminHandler{},
 		OperationalHandler: &handler.OperationalHandler{},
 		WorkflowHandler:    handler.NewWorkflowHandler(nil),
+		AssignmentHandler:  handler.NewAssignmentHandler(nil),
 		AuthMiddleware:     middleware.NewAuthMiddleware(nil),
 	})
 	registered := make(map[string]bool)
@@ -34,6 +35,8 @@ func TestWorkflowRoutesAreRegistered(t *testing.T) {
 		"GET /api/v1/inventory-report", "POST /api/v1/inventory-report", "GET /api/v1/inventory-report/:id",
 		"PATCH /api/v1/inventory-report/:id/review", "GET /api/v1/dashboard/report",
 		"GET /api/v1/reports/daily",
+		"GET /api/v1/assignments", "POST /api/v1/assignments", "GET /api/v1/assignments/:id",
+		"PATCH /api/v1/assignments/:id", "DELETE /api/v1/assignments/:id",
 	}
 	for _, route := range required {
 		if !registered[route] {

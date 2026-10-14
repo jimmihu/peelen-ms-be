@@ -20,7 +20,8 @@
     { "key": "pipelineItemId", "value": "" },
     { "key": "pipelineReportId", "value": "" },
     { "key": "inventoryReportId", "value": "" },
-    { "key": "shiftName", "value": "pagi" }
+    { "key": "shiftName", "value": "pagi" },
+    { "key": "assignmentId", "value": "" }
   ],
   "auth": {
     "type": "bearer",
@@ -628,6 +629,63 @@
         {
           "name": "My tasks for today",
           "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/me/task" }
+        }
+      ]
+    },
+    {
+      "name": "Assignments (worker task and shift)",
+      "description": "Assign a WORKER to a pipeline item and shift. Only Admin Worker creates, activates, or deactivates assignments, within own vendor; Super Admin and Admin read in scope. The worker must be active and scoped to the pipeline's vendor. Workers only list their own assignments. DELETE deactivates; creating the same pipeline item, user, and shift again reactivates it.",
+      "item": [
+        {
+          "name": "List assignments",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/assignments?pipeline_id={{pipelineId}}&is_active=true&page=1&limit=20" }
+        },
+        {
+          "name": "Create assignment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Assignment created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.id) pm.collectionVariables.set('assignmentId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pipeline_item_id\": \"{{pipelineItemId}}\",\n  \"user_id\": \"{{userId}}\",\n  \"shift\": \"pagi\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/assignments"
+          }
+        },
+        {
+          "name": "Get assignment",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/assignments/{{assignmentId}}" }
+        },
+        {
+          "name": "Activate or deactivate assignment",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/assignments/{{assignmentId}}"
+          }
+        },
+        {
+          "name": "Deactivate assignment",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/assignments/{{assignmentId}}" }
         }
       ]
     },
