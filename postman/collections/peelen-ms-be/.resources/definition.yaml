@@ -1,0 +1,23 @@
+$kind: collection
+description: "Semua endpoint peelen-ms-be. Jalankan Auth > Login dulu: access_token dan refresh_token otomatis disimpan ke variabel collection. Create User otomatis menyimpan user_id."
+variables:
+  base_url: http://103.150.226.7:8082
+  username: superadmin
+  password: ""
+  access_token: ""
+  refresh_token: ""
+  user_id: ""
+  site_id: ""
+  vendor_id: ""
+scripts:
+  - type: http:beforeRequest
+    code: |-
+      // GIN_MODE=release menolak HTTP polos kecuali lewat proxy TLS tepercaya.
+      pm.request.headers.upsert({ key: 'X-Forwarded-Proto', value: 'https' });
+    language: text/javascript
+auth:
+  - id: a823e6d5-72b0-4358-bde1-b156851d38bb
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{access_token}}"

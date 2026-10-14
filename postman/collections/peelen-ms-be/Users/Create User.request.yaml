@@ -1,0 +1,28 @@
+$kind: http-request
+description: "password opsional (8-72 karakter). Kalau kosong, server membuat temporary_password. Roles: SUPER_ADMIN, ADMIN, ADMIN_WORKER, WORKER."
+url: "{{base_url}}/api/v1/users"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "username": "user.test",
+      "email": "user.test@example.com",
+      "full_name": "User Test",
+      "phone": "081234567890",
+      "roles": [
+        "WORKER"
+      ],
+      "site_ids": [],
+      "vendor_ids": []
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      if (pm.response.code === 201) {
+        pm.collectionVariables.set('user_id', pm.response.json().user.id);
+      }
+    language: text/javascript
+order: 2000
