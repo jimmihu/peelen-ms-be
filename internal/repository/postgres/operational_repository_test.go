@@ -109,6 +109,22 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	if total != 1 || len(adminPipelines) != 1 || adminPipelines[0].ID != pipeline.ID {
 		t.Fatalf("admin should see pipelines through its site-vendor relation: total=%d records=%+v", total, adminPipelines)
 	}
+	// The vendor also works at a second site outside the admin's scope: the
+	// admin must not create pipelines there.
+	var foreignSiteID string
+	if err := db.QueryRowContext(ctx, `INSERT INTO sites (code, name) VALUES ($1, 'Foreign Site') RETURNING id::text`, "OF"+suffix).Scan(&foreignSiteID); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(ctx, `DELETE FROM sites WHERE id = $1`, foreignSiteID)
+	if _, err := db.ExecContext(ctx, `INSERT INTO vendor_sites (vendor_id, site_id) VALUES ($1, $2)`, vendorID, foreignSiteID); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(ctx, `DELETE FROM vendor_sites WHERE vendor_id = $1 AND site_id = $2`, vendorID, foreignSiteID)
+	if _, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &foreignSiteID, Name: stringPtr("Other admin's site"),
+	}, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("admin creating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
+	}
 	outsideScopeVendorID := "30000000-0000-4000-8000-000000000001"
 	if _, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
 		VendorID: &outsideScopeVendorID, SiteID: &siteID, Name: stringPtr("Out of scope"),

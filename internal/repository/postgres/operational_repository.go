@@ -168,13 +168,15 @@ func (r *OperationalRepositoryImpl) CreateOperational(ctx context.Context, acces
 		`, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs),
 			*input.VendorID, strings.TrimSpace(*input.Name), input.FileURL, access.UserID).Scan(&id)
 	case entity.ResourcePipeline:
-		// The site must be one the vendor works at.
+		// The site must be one the vendor works at, and within the caller's scope.
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO pipelines (vendor_id, site_id, name, description, created_by)
 			SELECT v.id, vs.site_id, $5, $6, $7
 			FROM vendors v
 			JOIN vendor_sites vs ON vs.vendor_id = v.id AND vs.site_id = $8
 			WHERE v.id = $4 AND `+scopePredicate("v.id", 1)+`
+				-- Site-scoped admins may only use their own sites.
+				AND ($1::boolean OR v.id = ANY($2::uuid[]) OR vs.site_id = ANY($3::uuid[]))
 			RETURNING id::text
 		`, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs),
 			*input.VendorID, strings.TrimSpace(*input.Name), input.Description, access.UserID, *input.SiteID).Scan(&id)
