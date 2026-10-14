@@ -13,6 +13,7 @@ type Config struct {
 	AdminHandler       *handler.AdminHandler
 	OperationalHandler *handler.OperationalHandler
 	WorkflowHandler    *handler.WorkflowHandler
+	AssignmentHandler  *handler.AssignmentHandler
 	AuthMiddleware     *middleware.AuthMiddleware
 	EnforceHTTPS       bool
 	TrustedProxyCIDRs  []string
@@ -76,6 +77,13 @@ func NewRouter(cfg Config) *gin.Engine {
 	operations.GET("/shifts/:shift", cfg.WorkflowHandler.GetShift)
 	operations.PUT("/shifts/:shift", cfg.WorkflowHandler.UpdateShift)
 	operations.DELETE("/shifts/:shift", cfg.WorkflowHandler.DeleteShift)
+
+	assignments := operations.Group("/assignments")
+	assignments.GET("", cfg.AssignmentHandler.ListAssignments)
+	assignments.POST("", cfg.AssignmentHandler.CreateAssignment)
+	assignments.GET("/:id", cfg.AssignmentHandler.GetAssignment)
+	assignments.PATCH("/:id", cfg.AssignmentHandler.UpdateAssignment)
+	assignments.DELETE("/:id", cfg.AssignmentHandler.DeleteAssignment)
 
 	pipelineReports := operations.Group("/pipeline-reports")
 	pipelineReports.GET("", cfg.WorkflowHandler.ListPipelineReports)

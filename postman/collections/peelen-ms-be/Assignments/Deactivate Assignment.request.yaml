@@ -1,0 +1,5 @@
+$kind: http-request
+description: Soft delete (is_active=false). Laporan lama tetap merujuk penugasan ini.
+url: "{{base_url}}/api/v1/assignments/{{assignment_id}}"
+method: DELETE
+order: 5000

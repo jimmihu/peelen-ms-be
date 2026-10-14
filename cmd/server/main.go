@@ -85,6 +85,9 @@ func main() {
 	workflowRepository := postgres.NewWorkflowRepository(db)
 	workflowUsecase := usecase.NewWorkflowUsecase(workflowRepository)
 	workflowHandler := handler.NewWorkflowHandler(workflowUsecase)
+	assignmentRepository := postgres.NewAssignmentRepository(db)
+	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepository)
+	assignmentHandler := handler.NewAssignmentHandler(assignmentUsecase)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
@@ -95,6 +98,7 @@ func main() {
 		AdminHandler:       adminHandler,
 		OperationalHandler: operationalHandler,
 		WorkflowHandler:    workflowHandler,
+		AssignmentHandler:  assignmentHandler,
 		AuthMiddleware:     authMiddleware,
 		EnforceHTTPS:       cfg.Server.Mode == "release",
 		TrustedProxyCIDRs:  cfg.Server.TrustedProxyCIDRs,

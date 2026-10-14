@@ -9,6 +9,8 @@ variables:
   user_id: ""
   site_id: ""
   vendor_id: ""
+  pipeline_item_id: ""
+  assignment_id: ""
 scripts:
   - type: http:beforeRequest
     code: |-

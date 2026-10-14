@@ -113,6 +113,8 @@ credentials, and valid vendor/site IDs first.
 | GET | `/shifts` | Authenticated; returns the available shifts and their hours |
 | POST | `/shifts` | Super Admin; creates one of the predefined shift names |
 | GET, PUT, DELETE | `/shifts/{shift}` | Authenticated read; Super Admin updates hours or deletes an unused shift |
+| GET, POST | `/assignments` | SA, Admin, Admin Worker list in scope; Worker lists own; only Admin Worker assigns |
+| GET, PATCH, DELETE | `/assignments/{id}` | Scoped read; only Admin Worker activates/deactivates in own vendor |
 | GET | `/me/task` | Authenticated; active assignments for current user and date |
 | GET, POST | `/pipeline-reports` | Scoped reports; assigned worker submits |
 | GET, PATCH | `/pipeline-reports/{id}` | Scoped report read/update; manager reviews in scope |
@@ -177,6 +179,18 @@ Use `GET /api/v1/shifts/{shift}` to read one shift, `PUT` on the same path to
 change its hours, and `DELETE` to remove an unused shift. Shift names are limited
 to `pagi`, `siang`, and `malam`; duplicate creation or deleting a shift still in
 use returns a conflict.
+
+`POST /assignments` assigns a Worker to a pipeline item and shift with
+`pipeline_item_id`, `user_id`, and `shift`. The target must be an active `WORKER`
+scoped to the vendor that owns the pipeline, and the pipeline item, pipeline, and
+item must be active. Only Admin Workers assign, within their own vendor; Super
+Admins and Admins can read assignments in scope for monitoring. Creating an existing active assignment returns a
+conflict; creating one that was deactivated reactivates it.
+`PATCH /assignments/{id}` accepts only `is_active`, and `DELETE` deactivates. To move
+a Worker to another shift, deactivate the assignment and create a new one, because
+pipeline reports reference the pipeline item, user, and shift. `GET /assignments`
+accepts `page`, `limit`, `vendor_id`, `site_id`, `pipeline_id`, `pipeline_item_id`,
+`user_id`, `shift`, and `is_active`; Workers only see their own assignments.
 
 `POST /pipeline-reports` accepts `pipeline_item_id`, `shift`, `report_date`
 (`YYYY-MM-DD`), optional `status` (`IN_PROGRESS` or `SUBMITTED`), and optional
