@@ -8,8 +8,8 @@ import (
 
 type DashboardRepository interface {
 	GetDashboard(
-		context.Context,
-		entity.OperationalAccess,
-		entity.DashboardFilter,
+		ctx context.Context,
+		access entity.OperationalAccess,
+		filter entity.DashboardFilter,
 	) (*entity.DashboardResponse, error)
 }
