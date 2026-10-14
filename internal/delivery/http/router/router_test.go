@@ -15,7 +15,7 @@ func TestWorkflowRoutesAreRegistered(t *testing.T) {
 		AuthHandler:        &handler.AuthHandler{},
 		AdminHandler:       &handler.AdminHandler{},
 		OperationalHandler: &handler.OperationalHandler{},
-		WorkflowHandler:    handler.NewWorkflowHandler(nil),
+		WorkflowHandler:    handler.NewWorkflowHandler(nil, nil, nil),
 		AssignmentHandler:  handler.NewAssignmentHandler(nil),
 		AuthMiddleware:     middleware.NewAuthMiddleware(nil),
 	})

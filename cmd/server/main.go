@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // APP_TIMEZONE must load even on images without tzdata
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -38,6 +39,11 @@ func main() {
 	}
 	if err := cfg.ObjectStorage.Validate(); err != nil {
 		log.Fatalf("Invalid object storage configuration: %v", err)
+	}
+
+	location, err := time.LoadLocation(cfg.Database.TimeZone)
+	if err != nil {
+		log.Fatalf("Invalid APP_TIMEZONE %q: %v", cfg.Database.TimeZone, err)
 	}
 
 	// Set Gin mode
@@ -84,7 +90,7 @@ func main() {
 	operationalHandler := handler.NewOperationalHandler(operationalUsecase, objectStorage)
 	workflowRepository := postgres.NewWorkflowRepository(db)
 	workflowUsecase := usecase.NewWorkflowUsecase(workflowRepository)
-	workflowHandler := handler.NewWorkflowHandler(workflowUsecase)
+	workflowHandler := handler.NewWorkflowHandler(workflowUsecase, objectStorage, location)
 	assignmentRepository := postgres.NewAssignmentRepository(db)
 	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepository)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentUsecase)

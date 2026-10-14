@@ -320,15 +320,15 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_items_pipeline_status
     ON pipeline_items(pipeline_id, status, sort_order);
 
 CREATE TABLE IF NOT EXISTS shifts (
-    shift      varchar(10) PRIMARY KEY CHECK (shift IN ('pagi', 'siang', 'malam')),
+    shift      varchar(10) PRIMARY KEY CHECK (shift IN ('DAY', 'EVENING', 'NIGHT')),
     start_time time NOT NULL,
     end_time   time NOT NULL
 );
 
 INSERT INTO shifts (shift, start_time, end_time) VALUES
-    ('pagi', '08:00', '16:00'),
-    ('siang', '16:00', '00:00'),
-    ('malam', '00:00', '08:00')
+    ('DAY',     '08:00', '16:00'),
+    ('EVENING', '16:00', '00:00'),
+    ('NIGHT',   '00:00', '08:00')
 ON CONFLICT (shift) DO UPDATE
 SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time;
 
@@ -358,9 +358,10 @@ CREATE TABLE IF NOT EXISTS pipeline_reports (
     shift                varchar(10) NOT NULL REFERENCES shifts(shift) ON UPDATE CASCADE ON DELETE RESTRICT,
     report_date          date NOT NULL,
     status               varchar(20) NOT NULL DEFAULT 'IN_PROGRESS'
-                         CHECK (status IN ('PENDING', 'IN_PROGRESS', 'SUBMITTED', 'COMPLETED', 'REJECTED')),
+                         CHECK (status IN ('IN_PROGRESS', 'COMPLETED')),
+    -- SUBMITTED = worker mengirim/mengubah report setelah shift selesai (upload susulan)
     status_revisi        varchar(20) NOT NULL DEFAULT 'NONE'
-                         CHECK (status_revisi IN ('NONE', 'REQUESTED', 'RESUBMITTED')),
+                         CHECK (status_revisi IN ('NONE', 'SUBMITTED')),
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now(),
     UNIQUE (pipeline_item_assignment_id, shift, report_date)
@@ -392,10 +393,10 @@ CREATE TABLE IF NOT EXISTS pipeline_report_history (
     actor_id            uuid REFERENCES users(id) ON DELETE SET NULL,
     previous_status     varchar(20),
     new_status          varchar(20) NOT NULL
-                        CHECK (new_status IN ('PENDING', 'IN_PROGRESS', 'SUBMITTED', 'COMPLETED', 'REJECTED')),
+                        CHECK (new_status IN ('IN_PROGRESS', 'COMPLETED')),
     previous_revision   varchar(20),
     new_revision        varchar(20) NOT NULL
-                        CHECK (new_revision IN ('NONE', 'REQUESTED', 'RESUBMITTED')),
+                        CHECK (new_revision IN ('NONE', 'SUBMITTED')),
     reason              text,
     created_at          timestamptz NOT NULL DEFAULT now()
 );

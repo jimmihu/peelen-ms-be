@@ -40,6 +40,14 @@ on a production database and do not run it more than once.
 For PRD 1.2 operational fixtures, run `psql` against the initialized and auth-seeded
 development database with `-f ddl/seed_v2.sql`. It can be re-run without duplicating
 the sample inventory, items, pipeline, or worker assignments.
+`ddl/seed_v3.sql` is a full development reset: it TRUNCATES every table, then loads roles,
+shifts, 10 PLTU sites, 5 vendors, `superadmin`, one Admin per site (`admin.<site code>`),
+one Admin Worker per vendor (`aw.*`) and 10 Workers per vendor (`w.vnd001.01` ..
+`w.vnd005.10`), all with password `Password123!`. Each vendor gets nine PLTU area pipelines
+(55 location items); each Worker is assigned every item of one area.
+It also fills the Worker flow: pipeline reports for the last 7 days (with details and status
+history), vendor inventories, and sample inventory reports.
+Use it instead of `seed.sql`/`seed_v2.sql`.
 
 For a database created from an earlier version of the current schema where
 `refresh_tokens.session_id` is missing, apply the migration:
@@ -162,8 +170,8 @@ Super Admin can create and edit them; Admin reads sites/vendors attached to thei
 site scope, and vendor roles read only their assigned vendors and related sites.
 `GET /me/task?date=YYYY-MM-DD` returns active tasks assigned to the authenticated
 user, with any report already submitted for that date.
-`GET /shifts` returns `pagi` (08:00-16:00), `siang` (16:00-00:00), and `malam`
-(00:00-08:00). Assignments and pipeline reports must use one of these shift names.
+`GET /shifts` returns `DAY` (08:00-16:00), `EVENING` (16:00-00:00), and `NIGHT`
+(00:00-08:00). Pipeline reports must use one of these shift names (input is case-insensitive).
 Only Super Admin can manage shifts. Create with `shift`, `start_time`, and
 `end_time` in `HH:MM` format; update only changes the hours, not the shift name.
 A shift cannot be deleted while referenced by an assignment or report.
@@ -172,34 +180,53 @@ A shift cannot be deleted while referenced by an assignment or report.
 POST /api/v1/shifts
 Content-Type: application/json
 
-{"shift":"pagi","start_time":"08:00","end_time":"16:00"}
+{"shift":"DAY","start_time":"08:00","end_time":"16:00"}
 ```
 
 Use `GET /api/v1/shifts/{shift}` to read one shift, `PUT` on the same path to
 change its hours, and `DELETE` to remove an unused shift. Shift names are limited
-to `pagi`, `siang`, and `malam`; duplicate creation or deleting a shift still in
+to `DAY`, `EVENING`, and `NIGHT`; duplicate creation or deleting a shift still in
 use returns a conflict.
 
-`POST /assignments` assigns a Worker to a pipeline item and shift with
-`pipeline_item_id`, `user_id`, and `shift`. The target must be an active `WORKER`
+`POST /assignments` assigns a Worker to a pipeline item with
+`pipeline_item_id` and `user_id`; the shift is chosen per pipeline report. The target must be an active `WORKER`
 scoped to the vendor that owns the pipeline, and the pipeline item, pipeline, and
 item must be active. Only Admin Workers assign, within their own vendor; Super
 Admins and Admins can read assignments in scope for monitoring. Creating an existing active assignment returns a
 conflict; creating one that was deactivated reactivates it.
 `PATCH /assignments/{id}` accepts only `is_active`, and `DELETE` deactivates. To move
-a Worker to another shift, deactivate the assignment and create a new one, because
-pipeline reports reference the pipeline item, user, and shift. `GET /assignments`
-accepts `page`, `limit`, `vendor_id`, `site_id`, `pipeline_id`, `pipeline_item_id`,
-`user_id`, `shift`, and `is_active`; Workers only see their own assignments.
+a Worker to another pipeline item, deactivate the assignment and create a new one,
+because pipeline reports reference the assignment. `GET /assignments` accepts `page`,
+`limit`, `vendor_id`, `site_id`, `pipeline_id`, `pipeline_item_id`, `user_id`, and
+`is_active`; Workers only see their own assignments.
 
 `POST /pipeline-reports` accepts `pipeline_item_id`, `shift`, `report_date`
-(`YYYY-MM-DD`), optional `status` (`IN_PROGRESS` or `SUBMITTED`), and optional
-report details (`evidence_before`, `evidence_after`, `open_date`, `closed_date`,
-`note_category`, `notes`). The caller must have an active assignment for the task
-and shift. `PATCH /pipeline-reports/{id}` lets the assigned user update report
-details/status or an in-scope manager set the review status (`COMPLETED`,
-`REJECTED`, `IN_PROGRESS`, `SUBMITTED`) and revision state (`REQUESTED`, `NONE`).
+(`YYYY-MM-DD`), optional `status` (`IN_PROGRESS`, the default, or `COMPLETED`), and
+optional report details (`evidence_before`, `evidence_after`, `open_date`,
+`closed_date`, `note_category`, `notes`). The caller must have an active assignment
+for the pipeline item. `PATCH /pipeline-reports/{id}` is Worker-only: the assigned
+Worker updates details and moves `IN_PROGRESS` to `COMPLETED`; a completed report
+cannot be reopened. `COMPLETED` requires `evidence_after` and `closed_date`. There is
+no manager review; managers only read reports.
+
+`status_revisi` is set by the server: `NONE` while the report is sent within its
+shift, `SUBMITTED` once it is created or changed after the shift ends (late upload,
+e.g. no signal on site). Uploads stay open until the same shift starts the next day;
+after that the API returns `409 REPORT_UPLOAD_CLOSED`. Shift windows are evaluated in
+the database time zone, so set it to the plant's local zone (e.g. `Asia/Jakarta`).
 Status and revision changes are recorded in `pipeline_report_history`.
+
+Both report endpoints also accept `multipart/form-data` with photo files
+`evidence_before` and `evidence_after` (JPEG/PNG/WebP, up to 5 MB each) plus the
+same fields as form values. Photos are stored in MinIO under `pipeline-reports/`.
+For a JPEG, the camera's EXIF capture time becomes `open_date` (before photo) and
+`closed_date` (after photo), overriding any client-supplied value, so a Worker
+who finished on time but uploaded later for lack of signal is not counted as
+late. Photos without EXIF keep the client's `open_date`/`closed_date`. Either
+way the times must lie between one hour before the shift starts and the moment
+of upload, which rejects old photos from the gallery. EXIF times without an
+offset are read in `APP_TIMEZONE` (default `Asia/Jakarta`), which is also used as
+the database session time zone.
 
 `POST /inventory-report` accepts `vendor_id`, `report_type` (`REQUEST` or
 `DAMAGED`), `description`, and optional `inventory_id` and `evidence` object key.

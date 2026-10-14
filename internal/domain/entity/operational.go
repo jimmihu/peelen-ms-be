@@ -10,6 +10,7 @@ var (
 	ErrInvalidOperationalData     = errors.New("invalid operational data")
 	ErrInvalidOperationalStatus   = errors.New("invalid operational status")
 	ErrInvalidOperationalResource = errors.New("invalid operational resource")
+	ErrReportUploadClosed         = errors.New("report upload window has closed; it ends when the same shift starts the next day")
 )
 
 type OperationalResource string

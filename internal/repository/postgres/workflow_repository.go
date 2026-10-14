@@ -242,7 +242,7 @@ func (r *WorkflowRepositoryImpl) ListShifts(ctx context.Context) ([]entity.Shift
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT shift, to_char(start_time, 'HH24:MI'), to_char(end_time, 'HH24:MI')
 		FROM shifts
-		ORDER BY CASE shift WHEN 'pagi' THEN 1 WHEN 'siang' THEN 2 ELSE 3 END
+		ORDER BY CASE shift WHEN 'DAY' THEN 1 WHEN 'EVENING' THEN 2 ELSE 3 END
 	`)
 	if err != nil {
 		return nil, err
@@ -369,27 +369,75 @@ func (r *WorkflowRepositoryImpl) GetPipelineReport(ctx context.Context, access e
 	return &reports[0], nil
 }
 
+// Report timing, relative to the report's shift (alias sh) on dateExpr:
+// the shift ends at its end time (next day when it crosses midnight), and a
+// Worker may still upload until the same shift starts the next day.
+func reportShiftEndSQL(dateExpr string) string {
+	return fmt.Sprintf(`((%s + sh.end_time) + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END)`, dateExpr)
+}
+
+func reportUploadCloseSQL(dateExpr string) string {
+	return fmt.Sprintf(`(%s + sh.start_time + interval '1 day')`, dateExpr)
+}
+
+// checkReportWorkTimes rejects open/closed times (from photo EXIF or the
+// client) earlier than an hour before the shift starts or later than now, so
+// an old photo cannot stand in for today's work.
+func checkReportWorkTimes(ctx context.Context, tx *sql.Tx, reportID string) error {
+	var valid bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT coalesce(bool_and(t IS NULL OR (
+			t >= (pr.report_date + sh.start_time) - interval '1 hour'
+			AND t <= now() + interval '5 minutes'
+		)), true)
+		FROM pipeline_reports pr
+		JOIN shifts sh ON sh.shift = pr.shift
+		JOIN pipeline_report_details d ON d.pipeline_report_id = pr.id
+		CROSS JOIN LATERAL (VALUES (d.open_date), (d.closed_date)) AS times(t)
+		WHERE pr.id = $1
+	`, reportID).Scan(&valid); err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("%w: photo/work time must be between 1 hour before the shift starts and now", entity.ErrInvalidOperationalData)
+	}
+	return nil
+}
+
 func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, access entity.OperationalAccess, input entity.PipelineReportInput) (*entity.PipelineReport, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	var reportID string
+	var locked bool
+	if err := tx.QueryRowContext(ctx, `SELECT now() >= `+reportUploadCloseSQL("$2::date")+` FROM shifts sh WHERE sh.shift = $1`,
+		input.Shift, input.ReportDate).Scan(&locked); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, err
+	}
+	if locked {
+		return nil, entity.ErrReportUploadClosed
+	}
 	status := input.Status
 	if status == "" {
-		status = "SUBMITTED"
+		status = "IN_PROGRESS"
 	}
+	var reportID, revision string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO pipeline_reports (pipeline_item_assignment_id, shift, report_date, status, status_revisi)
-		SELECT a.id, $3, $4::date, $5, COALESCE(NULLIF($6, ''), 'NONE')
+		SELECT a.id, sh.shift, $4::date, $5,
+			CASE WHEN now() > `+reportShiftEndSQL("$4::date")+` THEN 'SUBMITTED' ELSE 'NONE' END
 		FROM pipeline_item_assignments a
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN shifts sh ON sh.shift = $3
 		WHERE pi.id = $1 AND a.user_id = $2 AND a.is_active
 			AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE'
-		RETURNING id::text
-	`, input.PipelineItemID, access.UserID, input.Shift, input.ReportDate, status, input.StatusRevisi).Scan(&reportID); err != nil {
+		RETURNING id::text, status_revisi
+	`, input.PipelineItemID, access.UserID, input.Shift, input.ReportDate, status).Scan(&reportID, &revision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrNotFound
 		}
@@ -398,10 +446,13 @@ func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, acces
 	if err := writePipelineReportDetails(ctx, tx, reportID, input); err != nil {
 		return nil, err
 	}
+	if err := checkReportWorkTimes(ctx, tx, reportID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO pipeline_report_history (pipeline_report_id, actor_id, new_status, new_revision, reason)
-		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'NONE'), $5)
-	`, reportID, access.UserID, status, input.StatusRevisi, input.Reason); err != nil {
+		VALUES ($1, $2, $3, $4, $5)
+	`, reportID, access.UserID, status, revision, input.Reason); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -410,50 +461,69 @@ func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, acces
 	return r.GetPipelineReport(ctx, access, reportID)
 }
 
-func (r *WorkflowRepositoryImpl) UpdatePipelineReport(ctx context.Context, access entity.OperationalAccess, id string, input entity.PipelineReportInput, canReview bool) (*entity.PipelineReport, error) {
+// UpdatePipelineReport is Worker-only: the assigned Worker fills in details and
+// completes the report. Changes after the shift ends mark status_revisi
+// SUBMITTED (late upload, e.g. no signal on site); no manager review applies.
+func (r *WorkflowRepositoryImpl) UpdatePipelineReport(ctx context.Context, access entity.OperationalAccess, id string, input entity.PipelineReportInput) (*entity.PipelineReport, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	var previousStatus, previousRevision string
+	var afterShift, locked bool
 	if err := tx.QueryRowContext(ctx, `
-		SELECT pr.status, pr.status_revisi FROM pipeline_reports pr
+		SELECT pr.status, pr.status_revisi,
+			now() > `+reportShiftEndSQL("pr.report_date")+`,
+			now() >= `+reportUploadCloseSQL("pr.report_date")+`
+		FROM pipeline_reports pr
 		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
-		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
-		JOIN pipelines p ON p.id = pi.pipeline_id
-		WHERE pr.id = $1
-			AND ($2::boolean OR p.vendor_id = ANY($3::uuid[]) OR EXISTS (
-				SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($4::uuid[])
-			))
-			AND ($5::boolean OR (a.user_id = $6 AND a.is_active))
-	`, id, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), canReview, access.UserID).
-		Scan(&previousStatus, &previousRevision); err != nil {
+		JOIN shifts sh ON sh.shift = pr.shift
+		WHERE pr.id = $1 AND a.user_id = $2 AND a.is_active
+		FOR UPDATE OF pr
+	`, id, access.UserID).Scan(&previousStatus, &previousRevision, &afterShift, &locked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrNotFound
 		}
 		return nil, err
 	}
+	if locked {
+		return nil, entity.ErrReportUploadClosed
+	}
 	status := input.Status
-	revision := input.StatusRevisi
 	if status == "" {
 		status = previousStatus
 	}
-	if revision == "" {
-		revision = previousRevision
+	if previousStatus == "COMPLETED" && status != "COMPLETED" {
+		return nil, fmt.Errorf("%w: a completed report cannot be reopened", entity.ErrInvalidOperationalData)
 	}
-	result, err := tx.ExecContext(ctx, `
-		UPDATE pipeline_reports SET status = $2, status_revisi = $3, updated_at = now()
-		WHERE id = $1
-	`, id, status, revision)
-	if err != nil {
-		return nil, translateOperationalDBError(err)
-	}
-	if err := workflowRequireAffected(result); err != nil {
-		return nil, err
+	revision := previousRevision
+	if afterShift {
+		revision = "SUBMITTED"
 	}
 	if err := writePipelineReportDetails(ctx, tx, id, input); err != nil {
 		return nil, err
+	}
+	if err := checkReportWorkTimes(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	if status == "COMPLETED" {
+		var complete bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT evidence_after IS NOT NULL AND closed_date IS NOT NULL
+			FROM pipeline_report_details WHERE pipeline_report_id = $1
+		`, id).Scan(&complete); err != nil {
+			return nil, err
+		}
+		if !complete {
+			return nil, fmt.Errorf("%w: evidence_after and closed_date are required to complete a report", entity.ErrInvalidOperationalData)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE pipeline_reports SET status = $2, status_revisi = $3, updated_at = now()
+		WHERE id = $1
+	`, id, status, revision); err != nil {
+		return nil, translateOperationalDBError(err)
 	}
 	if previousStatus != status || previousRevision != revision {
 		if _, err := tx.ExecContext(ctx, `
@@ -591,14 +661,14 @@ func (r *WorkflowRepositoryImpl) GetInventoryReport(ctx context.Context, access 
 }
 
 func (r *WorkflowRepositoryImpl) ReportDashboard(ctx context.Context, access entity.OperationalAccess, date time.Time, siteID, vendorID string) (map[string]any, error) {
-	var pipelineTotal, pipelinePending, pipelineSubmitted, pipelineCompleted int
+	var pipelineTotal, pipelineInProgress, pipelineCompleted, pipelineLateUpload int
 	pipelineScope := `($1::boolean OR p.vendor_id = ANY($2::uuid[]) OR EXISTS (
 		SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($3::uuid[])
 	))`
 	pipelineQuery := `SELECT count(*),
-		count(*) FILTER (WHERE pr.status IN ('PENDING', 'IN_PROGRESS')),
-		count(*) FILTER (WHERE pr.status = 'SUBMITTED'),
-		count(*) FILTER (WHERE pr.status = 'COMPLETED')
+		count(*) FILTER (WHERE pr.status = 'IN_PROGRESS'),
+		count(*) FILTER (WHERE pr.status = 'COMPLETED'),
+		count(*) FILTER (WHERE pr.status_revisi = 'SUBMITTED')
 		FROM pipeline_reports pr
 		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
@@ -617,7 +687,7 @@ func (r *WorkflowRepositoryImpl) ReportDashboard(ctx context.Context, access ent
 		pipelineQuery += fmt.Sprintf(" AND a.user_id = $%d", len(args)+1)
 		args = append(args, access.UserID)
 	}
-	if err := r.db.QueryRowContext(ctx, pipelineQuery, args...).Scan(&pipelineTotal, &pipelinePending, &pipelineSubmitted, &pipelineCompleted); err != nil {
+	if err := r.db.QueryRowContext(ctx, pipelineQuery, args...).Scan(&pipelineTotal, &pipelineInProgress, &pipelineCompleted, &pipelineLateUpload); err != nil {
 		return nil, err
 	}
 
@@ -649,7 +719,8 @@ func (r *WorkflowRepositoryImpl) ReportDashboard(ctx context.Context, access ent
 	return map[string]any{
 		"date": date.Format("2006-01-02"),
 		"pipeline_reports": map[string]int{
-			"total": pipelineTotal, "pending": pipelinePending, "submitted": pipelineSubmitted, "completed": pipelineCompleted,
+			"total": pipelineTotal, "in_progress": pipelineInProgress, "completed": pipelineCompleted,
+			"late_upload": pipelineLateUpload,
 		},
 		"inventory_reports": map[string]int{
 			"total": inventoryTotal, "submitted": inventorySubmitted, "in_review": inventoryInReview, "resolved": inventoryResolved,
@@ -662,8 +733,8 @@ func (r *WorkflowRepositoryImpl) DailyReport(ctx context.Context, access entity.
 		count(DISTINCT pi.id) AS task_count,
 		count(DISTINCT pr.id) AS report_count,
 		count(DISTINCT pr.id) FILTER (WHERE pr.status = 'COMPLETED') AS completed_count,
-		count(DISTINCT pr.id) FILTER (WHERE pr.status IN ('PENDING', 'IN_PROGRESS')) AS pending_count,
-		count(DISTINCT pr.id) FILTER (WHERE pr.status = 'SUBMITTED') AS submitted_count
+		count(DISTINCT pr.id) FILTER (WHERE pr.status = 'IN_PROGRESS') AS in_progress_count,
+		count(DISTINCT pr.id) FILTER (WHERE pr.status_revisi = 'SUBMITTED') AS late_upload_count
 		FROM pipelines p JOIN vendors v ON v.id = p.vendor_id
 		JOIN pipeline_items pi ON pi.pipeline_id = p.id AND pi.status = 'ACTIVE'
 		LEFT JOIN pipeline_item_assignments a ON a.pipeline_item_id = pi.id AND a.is_active
@@ -693,14 +764,14 @@ func (r *WorkflowRepositoryImpl) DailyReport(ctx context.Context, access entity.
 	result := make([]map[string]any, 0)
 	for rows.Next() {
 		var vendorID, vendorName, pipelineID, pipelineName string
-		var tasks, reports, completed, pending, submitted int
-		if err := rows.Scan(&vendorID, &vendorName, &pipelineID, &pipelineName, &tasks, &reports, &completed, &pending, &submitted); err != nil {
+		var tasks, reports, completed, inProgress, lateUpload int
+		if err := rows.Scan(&vendorID, &vendorName, &pipelineID, &pipelineName, &tasks, &reports, &completed, &inProgress, &lateUpload); err != nil {
 			return nil, err
 		}
 		result = append(result, map[string]any{
 			"vendor_id": vendorID, "vendor_name": vendorName, "pipeline_id": pipelineID, "pipeline_name": pipelineName,
 			"task_count": tasks, "report_count": reports, "completed_count": completed,
-			"pending_count": pending, "submitted_count": submitted,
+			"in_progress_count": inProgress, "late_upload_count": lateUpload,
 		})
 	}
 	return result, rows.Err()

@@ -1,4 +1,4 @@
-.PHONY: build run test clean deps db-setup db-seed db-migrate bootstrap-admin
+.PHONY: build run test clean deps db-setup db-seed db-reset db-migrate bootstrap-admin
 
 DB_NAME ?= auth_db
 
@@ -34,6 +34,10 @@ db-setup:
 # Development/test data only; seed.sql uses shared demo credentials and is not idempotent.
 db-seed:
 	set -a; . ./.env; set +a; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f ddl/seed.sql
+
+# Development only: wipes every table, then loads ddl/seed_v3.sql.
+db-reset:
+	set -a; . ./.env; set +a; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f ddl/seed_v3.sql
 
 db-migrate:
 	set -a; . ./.env; set +a; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f ddl/migrations/001_refresh_token_session.sql

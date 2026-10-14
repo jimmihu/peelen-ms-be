@@ -1707,7 +1707,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"pipeline_item_id\": \"{{pipeline_item_id}}\",\n  \"shift\": \"{{shift}}\",\n  \"report_date\": \"2024-01-15\",\n  \"status\": \"OK\",\n  \"status_revisi\": \"\",\n  \"evidence_before\": null,\n  \"evidence_after\": null,\n  \"notes\": \"Sample report notes\"\n}",
+              "raw": "{\n  \"pipeline_item_id\": \"{{pipeline_item_id}}\",\n  \"shift\": \"{{shift}}\",\n  \"report_date\": \"2024-01-15\",\n  \"status\": \"IN_PROGRESS\",\n  \"evidence_before\": null,\n  \"evidence_after\": null,\n  \"notes\": \"Sample report notes\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1753,7 +1753,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"pipeline_item_id\": \"{{pipeline_item_id}}\",\n  \"shift\": \"{{shift}}\",\n  \"report_date\": \"2024-01-15\",\n  \"status\": \"NOT_OK\",\n  \"status_revisi\": \"REVISED\",\n  \"notes\": \"Updated report notes\",\n  \"reason\": \"Correction needed\"\n}",
+              "raw": "{\n  \"pipeline_item_id\": \"{{pipeline_item_id}}\",\n  \"shift\": \"{{shift}}\",\n  \"report_date\": \"2024-01-15\",\n  \"status\": \"COMPLETED\",\n  \"evidence_after\": \"pipeline-reports/sample/after.jpg\",\n  \"closed_date\": \"2024-01-15T09:00:00+07:00\",\n  \"notes\": \"Updated report notes\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
