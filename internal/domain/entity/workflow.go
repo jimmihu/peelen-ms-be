@@ -22,6 +22,12 @@ type Vendor struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Shift struct {
+	Shift     string `json:"shift"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
 type PipelineReport struct {
 	ID             string     `json:"id"`
 	PipelineItemID string     `json:"pipeline_item_id"`

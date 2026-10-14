@@ -1,0 +1,24 @@
+$kind: http-request
+description: Filter opsional; from/to format RFC3339.
+url: "{{base_url}}/api/v1/audit-logs?limit=100"
+method: GET
+queryParams:
+  - key: limit
+    value: "100"
+    disabled: false
+  - key: user_id
+    value: "{{user_id}}"
+    disabled: true
+  - key: action
+    value: ""
+    disabled: true
+  - key: entity
+    value: ""
+    disabled: true
+  - key: from
+    value: 2026-10-01T00:00:00Z
+    disabled: true
+  - key: to
+    value: 2026-10-31T23:59:59Z
+    disabled: true
+order: 2000

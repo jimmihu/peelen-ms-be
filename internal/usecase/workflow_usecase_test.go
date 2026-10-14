@@ -45,3 +45,41 @@ func TestSiteAndVendorWritesRequireSuperAdmin(t *testing.T) {
 		t.Fatalf("expected vendor create to be forbidden, got %v", err)
 	}
 }
+
+func TestValidShift(t *testing.T) {
+	for _, shift := range []string{"pagi", "siang", "malam", " PAGI "} {
+		if !validShift(shift) {
+			t.Errorf("validShift(%q) = false, want true", shift)
+		}
+	}
+	for _, shift := range []string{"day", "", "night shift"} {
+		if validShift(shift) {
+			t.Errorf("validShift(%q) = true, want false", shift)
+		}
+	}
+}
+
+func TestNormalizeShift(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   entity.Shift
+		want    entity.Shift
+		wantErr bool
+	}{
+		{name: "valid overnight shift", input: entity.Shift{Shift: " MALAM ", StartTime: "23:30", EndTime: "07:30"}, want: entity.Shift{Shift: "malam", StartTime: "23:30", EndTime: "07:30"}},
+		{name: "invalid name", input: entity.Shift{Shift: "sore", StartTime: "16:00", EndTime: "00:00"}, wantErr: true},
+		{name: "invalid time", input: entity.Shift{Shift: "pagi", StartTime: "8:00", EndTime: "16:00"}, wantErr: true},
+		{name: "zero duration", input: entity.Shift{Shift: "siang", StartTime: "16:00", EndTime: "16:00"}, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := normalizeShift(test.input)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("normalizeShift() error = %v, wantErr %v", err, test.wantErr)
+			}
+			if err == nil && got != test.want {
+				t.Fatalf("normalizeShift() = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
