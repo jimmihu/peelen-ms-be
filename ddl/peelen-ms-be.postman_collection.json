@@ -19,7 +19,8 @@
     { "key": "pipelineId", "value": "" },
     { "key": "pipelineItemId", "value": "" },
     { "key": "pipelineReportId", "value": "" },
-    { "key": "inventoryReportId", "value": "" }
+    { "key": "inventoryReportId", "value": "" },
+    { "key": "shiftName", "value": "pagi" }
   ],
   "auth": {
     "type": "bearer",
@@ -519,6 +520,63 @@
         {
           "name": "Deactivate pipeline (Super Admin / scoped Admin)",
           "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/pipelines/{{pipelineId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Shift management (Super Admin)",
+      "description": "Shift names are limited to pagi, siang, and malam. Create only when the selected name does not exist. Deleting a shift referenced by assignments or reports returns a conflict.",
+      "item": [
+        {
+          "name": "List shifts",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/shifts" }
+        },
+        {
+          "name": "Create shift (Super Admin, name must be unused)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shift created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.shift) pm.collectionVariables.set('shiftName', body.data.shift);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shift\": \"malam\",\n  \"start_time\": \"00:00\",\n  \"end_time\": \"08:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/shifts"
+          }
+        },
+        {
+          "name": "Get shift",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/shifts/{{shiftName}}" }
+        },
+        {
+          "name": "Update shift hours (Super Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_time\": \"00:00\",\n  \"end_time\": \"08:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/shifts/{{shiftName}}"
+          }
+        },
+        {
+          "name": "Delete unused shift (Super Admin)",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/shifts/{{shiftName}}" }
         }
       ]
     },
