@@ -20,14 +20,16 @@ import (
 const refreshCookieName = "refresh_token"
 
 type AuthHandler struct {
-	authUsecase usecase.AuthUsecase
-	limiter     *middleware.RateLimiter
+	authUsecase  usecase.AuthUsecase
+	limiter      *middleware.RateLimiter
+	secureCookie bool
 }
 
-func NewAuthHandler(authUsecase usecase.AuthUsecase) *AuthHandler {
+func NewAuthHandler(authUsecase usecase.AuthUsecase, secureCookie bool) *AuthHandler {
 	return &AuthHandler{
-		authUsecase: authUsecase,
-		limiter:     middleware.NewRateLimiter(10, time.Minute),
+		authUsecase:  authUsecase,
+		limiter:      middleware.NewRateLimiter(10, time.Minute),
+		secureCookie: secureCookie,
 	}
 }
 
@@ -90,7 +92,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 		return
 	}
-	setRefreshCookie(c, result.RefreshToken, result.RefreshExpiresAt)
+	h.setRefreshCookie(c, result.RefreshToken, result.RefreshExpiresAt)
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken: result.AccessToken, ExpiresAt: result.ExpiresAt, User: result.User,
 	})
@@ -125,17 +127,17 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		_ = c.Error(err)
 		switch {
 		case errors.Is(err, usecase.ErrRefreshReuse):
-			clearRefreshCookie(c)
+			h.clearRefreshCookie(c)
 			writeError(c, http.StatusUnauthorized, "AUTH_REFRESH_REUSE", "Refresh token reuse detected; all sessions were revoked")
 		case errors.Is(err, usecase.ErrInvalidToken):
-			clearRefreshCookie(c)
+			h.clearRefreshCookie(c)
 			writeError(c, http.StatusUnauthorized, "AUTH_INVALID_TOKEN", "Invalid or expired refresh token")
 		default:
 			writeError(c, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "An error occurred while refreshing the session")
 		}
 		return
 	}
-	setRefreshCookie(c, result.RefreshToken, result.RefreshExpiresAt)
+	h.setRefreshCookie(c, result.RefreshToken, result.RefreshExpiresAt)
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken: result.AccessToken, ExpiresAt: result.ExpiresAt, User: result.User,
 	})
@@ -155,7 +157,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "An error occurred during logout")
 		return
 	}
-	clearRefreshCookie(c)
+	h.clearRefreshCookie(c)
 	c.JSON(http.StatusOK, SuccessResponse{Message: "Successfully logged out"})
 }
 
@@ -171,7 +173,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "Unable to revoke sessions")
 		return
 	}
-	clearRefreshCookie(c)
+	h.clearRefreshCookie(c)
 	c.JSON(http.StatusOK, SuccessResponse{Message: "All sessions revoked"})
 }
 
@@ -199,7 +201,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	case err != nil:
 		writeError(c, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "Unable to change password")
 	default:
-		clearRefreshCookie(c)
+		h.clearRefreshCookie(c)
 		c.JSON(http.StatusOK, SuccessResponse{Message: "Password changed; sign in again"})
 	}
 }
@@ -224,18 +226,28 @@ func refreshTokenFromRequest(c *gin.Context) string {
 	return ""
 }
 
-func setRefreshCookie(c *gin.Context, token string, expiresAt time.Time) {
+func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string, expiresAt time.Time) {
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name: refreshCookieName, Value: token, Path: "/api/v1/auth",
-		Expires: expiresAt, MaxAge: int(time.Until(expiresAt).Seconds()),
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
+		Name:     refreshCookieName,
+		Value:    token,
+		Path:     "/api/v1/auth",
+		Expires:  expiresAt,
+		MaxAge:   int(time.Until(expiresAt).Seconds()),
+		HttpOnly: true,
+		Secure:   h.secureCookie,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 
-func clearRefreshCookie(c *gin.Context) {
+func (h *AuthHandler) clearRefreshCookie(c *gin.Context) {
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name: refreshCookieName, Value: "", Path: "/api/v1/auth",
-		MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     "/api/v1/auth",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.secureCookie,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 

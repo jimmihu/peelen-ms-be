@@ -67,7 +67,7 @@ func main() {
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, authUsecaseConfig)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authUsecase)
+	authHandler := handler.NewAuthHandler(authUsecase, cfg.Server.SecureCookie)
 	adminRepository := postgres.NewAdminRepository(db)
 	adminUsecase := usecase.NewAdminUsecase(adminRepository, cfg.Auth.BcryptCost)
 	adminHandler := handler.NewAdminHandler(adminUsecase)

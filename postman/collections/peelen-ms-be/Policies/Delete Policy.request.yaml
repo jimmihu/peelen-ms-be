@@ -1,4 +1,0 @@
-$kind: http-request
-url: "{{base_url}}/api/v1/policies/{{policy_id}}"
-method: DELETE
-order: 5000

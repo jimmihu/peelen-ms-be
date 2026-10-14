@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "aad92575-922b-4269-ad46-159b10bf26bc",
     "name": "peelen-ms-be",
-    "description": "Semua endpoint peelen-ms-be. Jalankan Auth > Login dulu: access_token dan refresh_token otomatis disimpan ke variabel collection. Create User otomatis menyimpan user_id.",
+    "description": "Semua endpoint peelen-ms-be.\n\n**Cara Pakai:**\n1. Jalankan Auth > Login dulu\n2. access_token otomatis disimpan ke variabel collection\n3. refresh_token dikirim sebagai HTTP-only cookie (otomatis di-handle Postman)\n4. Refresh dan Logout endpoint akan otomatis menggunakan cookie tersebut\n\n**Catatan:** Pastikan Settings > Cookies > Automatically follow redirects diaktifkan.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -38,14 +38,10 @@
     },
     {
       "key": "password",
-      "value": ""
+      "value": "Password123!"
     },
     {
       "key": "access_token",
-      "value": ""
-    },
-    {
-      "key": "refresh_token",
       "value": ""
     },
     {
@@ -160,8 +156,8 @@
                   "if (pm.response.code === 200) {",
                   "  const body = pm.response.json();",
                   "  pm.collectionVariables.set('access_token', body.access_token);",
-                  "  const rt = pm.cookies.get('refresh_token');",
-                  "  if (rt) pm.collectionVariables.set('refresh_token', rt);",
+                  "  // refresh_token dikirim sebagai HTTP-only cookie, otomatis di-handle Postman",
+                  "  pm.collectionVariables.set('user_id', body.user.id);",
                   "}"
                 ]
               }
@@ -172,12 +168,7 @@
           "name": "Refresh",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/refresh",
               "host": [
@@ -190,19 +181,10 @@
                 "refresh"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "auth": {
               "type": "noauth"
             },
-            "description": "Refresh token sekali pakai: setiap refresh menghasilkan token baru (otomatis disimpan). Memakai token lama lagi akan mencabut semua sesi."
+            "description": "Refresh token diambil dari HTTP-only cookie (otomatis dikirim Postman). Setiap refresh menghasilkan token baru. Memakai token lama lagi akan mencabut semua sesi."
           },
           "event": [
             {
@@ -213,8 +195,8 @@
                   "if (pm.response.code === 200) {",
                   "  const body = pm.response.json();",
                   "  pm.collectionVariables.set('access_token', body.access_token);",
-                  "  const rt = pm.cookies.get('refresh_token');",
-                  "  if (rt) pm.collectionVariables.set('refresh_token', rt);",
+                  "  // refresh_token dikirim sebagai HTTP-only cookie, otomatis di-handle Postman",
+                  "  pm.collectionVariables.set('user_id', body.user.id);",
                   "}"
                 ]
               }
@@ -277,12 +259,7 @@
           "name": "Logout",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/logout",
               "host": [
@@ -295,15 +272,7 @@
                 "logout"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Logout current session. Refresh token diambil dari HTTP-only cookie."
           }
         },
         {

@@ -22,6 +22,7 @@ type ServerConfig struct {
 	TLSCertFile       string
 	TLSKeyFile        string
 	TrustedProxyCIDRs []string
+	SecureCookie      bool
 }
 
 type DatabaseConfig struct {
@@ -76,6 +77,7 @@ func Load() *Config {
 			TLSCertFile:       getEnv("TLS_CERT_FILE", ""),
 			TLSKeyFile:        getEnv("TLS_KEY_FILE", ""),
 			TrustedProxyCIDRs: getStringListEnv("TRUSTED_PROXY_CIDRS"),
+			SecureCookie:      getBoolEnv("SECURE_COOKIE", getEnv("GIN_MODE", "debug") == "release"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
