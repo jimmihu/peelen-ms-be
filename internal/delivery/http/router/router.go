@@ -14,6 +14,7 @@ type Config struct {
 	OperationalHandler *handler.OperationalHandler
 	WorkflowHandler    *handler.WorkflowHandler
 	AssignmentHandler  *handler.AssignmentHandler
+	DashboardHandler   *handler.DashboardHandler
 	AuthMiddleware     *middleware.AuthMiddleware
 	EnforceHTTPS       bool
 	TrustedProxyCIDRs  []string
@@ -139,5 +140,8 @@ func NewRouter(cfg Config) *gin.Engine {
 	pipelineItems.GET("/:id", cfg.OperationalHandler.Get(entity.ResourcePipelineItem))
 	pipelineItems.PATCH("/:id", cfg.OperationalHandler.Update(entity.ResourcePipelineItem))
 	pipelineItems.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourcePipelineItem))
+
+	operations.GET("/dashboard", cfg.DashboardHandler.GetDashboard)
+
 	return router
 }

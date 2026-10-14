@@ -89,6 +89,10 @@ func main() {
 	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepository)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentUsecase)
 
+	dashboardRepository := postgres.NewDashboardRepository(db)
+	dashboardUsecase := usecase.NewDashboardUsecase(dashboardRepository)
+	dashboardHandler := handler.NewDashboardHandler(dashboardUsecase)
+
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
 
@@ -99,6 +103,7 @@ func main() {
 		OperationalHandler: operationalHandler,
 		WorkflowHandler:    workflowHandler,
 		AssignmentHandler:  assignmentHandler,
+		DashboardHandler:   dashboardHandler,
 		AuthMiddleware:     authMiddleware,
 		EnforceHTTPS:       cfg.Server.Mode == "release",
 		TrustedProxyCIDRs:  cfg.Server.TrustedProxyCIDRs,
