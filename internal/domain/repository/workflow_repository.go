@@ -18,6 +18,11 @@ type WorkflowRepository interface {
 	CreateVendor(context.Context, entity.Vendor, []string) (*entity.Vendor, error)
 	UpdateVendor(context.Context, string, entity.Vendor, []string) (*entity.Vendor, error)
 	DeleteVendor(context.Context, string) error
+	ListShifts(context.Context) ([]entity.Shift, error)
+	GetShift(context.Context, string) (*entity.Shift, error)
+	CreateShift(context.Context, entity.Shift) (*entity.Shift, error)
+	UpdateShift(context.Context, string, entity.Shift) (*entity.Shift, error)
+	DeleteShift(context.Context, string) error
 	ListMyTasks(context.Context, entity.OperationalAccess, time.Time) ([]entity.MyTask, error)
 	ListPipelineReports(context.Context, entity.OperationalAccess, entity.ReportFilter) ([]entity.PipelineReport, int, error)
 	GetPipelineReport(context.Context, entity.OperationalAccess, string) (*entity.PipelineReport, error)

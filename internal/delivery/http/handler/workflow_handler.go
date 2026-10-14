@@ -130,6 +130,60 @@ func (h *WorkflowHandler) DeleteVendor(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *WorkflowHandler) ListShifts(c *gin.Context) {
+	result, err := h.usecase.ListShifts(c.Request.Context(), currentUser(c))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"shifts": result})
+}
+
+func (h *WorkflowHandler) GetShift(c *gin.Context) {
+	result, err := h.usecase.GetShift(c.Request.Context(), currentUser(c), c.Param("shift"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) CreateShift(c *gin.Context) {
+	var input entity.Shift
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.CreateShift(c.Request.Context(), currentUser(c), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) UpdateShift(c *gin.Context) {
+	var input entity.Shift
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	result, err := h.usecase.UpdateShift(c.Request.Context(), currentUser(c), c.Param("shift"), input)
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *WorkflowHandler) DeleteShift(c *gin.Context) {
+	if err := h.usecase.DeleteShift(c.Request.Context(), currentUser(c), c.Param("shift")); err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *WorkflowHandler) MyTasks(c *gin.Context) {
 	date := c.Query("date")
 	if date == "" {

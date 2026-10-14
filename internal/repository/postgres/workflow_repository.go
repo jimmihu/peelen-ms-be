@@ -238,6 +238,83 @@ func replaceVendorSites(ctx context.Context, tx *sql.Tx, vendorID string, siteID
 	return nil
 }
 
+func (r *WorkflowRepositoryImpl) ListShifts(ctx context.Context) ([]entity.Shift, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT shift, to_char(start_time, 'HH24:MI'), to_char(end_time, 'HH24:MI')
+		FROM shifts
+		ORDER BY CASE shift WHEN 'pagi' THEN 1 WHEN 'siang' THEN 2 ELSE 3 END
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	shifts := make([]entity.Shift, 0, 3)
+	for rows.Next() {
+		var shift entity.Shift
+		if err := rows.Scan(&shift.Shift, &shift.StartTime, &shift.EndTime); err != nil {
+			return nil, err
+		}
+		shifts = append(shifts, shift)
+	}
+	return shifts, rows.Err()
+}
+
+func (r *WorkflowRepositoryImpl) GetShift(ctx context.Context, name string) (*entity.Shift, error) {
+	var shift entity.Shift
+	err := r.db.QueryRowContext(ctx, `
+		SELECT shift, to_char(start_time, 'HH24:MI'), to_char(end_time, 'HH24:MI')
+		FROM shifts WHERE shift = $1
+	`, name).Scan(&shift.Shift, &shift.StartTime, &shift.EndTime)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &shift, nil
+}
+
+func (r *WorkflowRepositoryImpl) CreateShift(ctx context.Context, shift entity.Shift) (*entity.Shift, error) {
+	var result entity.Shift
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO shifts (shift, start_time, end_time)
+		VALUES ($1, $2::time, $3::time)
+		RETURNING shift, to_char(start_time, 'HH24:MI'), to_char(end_time, 'HH24:MI')
+	`, shift.Shift, shift.StartTime, shift.EndTime).Scan(&result.Shift, &result.StartTime, &result.EndTime)
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	return &result, nil
+}
+
+func (r *WorkflowRepositoryImpl) UpdateShift(ctx context.Context, name string, shift entity.Shift) (*entity.Shift, error) {
+	var result entity.Shift
+	err := r.db.QueryRowContext(ctx, `
+		UPDATE shifts SET start_time = $2::time, end_time = $3::time
+		WHERE shift = $1
+		RETURNING shift, to_char(start_time, 'HH24:MI'), to_char(end_time, 'HH24:MI')
+	`, name, shift.StartTime, shift.EndTime).Scan(&result.Shift, &result.StartTime, &result.EndTime)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	return &result, nil
+}
+
+func (r *WorkflowRepositoryImpl) DeleteShift(ctx context.Context, name string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM shifts WHERE shift = $1`, name)
+	if err != nil {
+		var pgError *pq.Error
+		if errors.As(err, &pgError) && pgError.Code == "23503" {
+			return repository.ErrConflict
+		}
+		return translateOperationalDBError(err)
+	}
+	return workflowRequireAffected(result)
+}
+
 func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.OperationalAccess, reportDate time.Time) ([]entity.MyTask, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name,

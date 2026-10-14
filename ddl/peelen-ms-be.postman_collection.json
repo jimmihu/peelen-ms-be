@@ -596,7 +596,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"pipeline_item_id\": \"{{pipelineItemId}}\",\n  \"shift\": \"DAY\",\n  \"report_date\": \"2026-10-13\",\n  \"status\": \"SUBMITTED\",\n  \"note_category\": \"UNSAFE_CONDITION\",\n  \"notes\": \"Inspection completed\"\n}",
+              "raw": "{\n  \"pipeline_item_id\": \"{{pipelineItemId}}\",\n  \"shift\": \"pagi\",\n  \"report_date\": \"2026-10-13\",\n  \"status\": \"SUBMITTED\",\n  \"note_category\": \"UNSAFE_CONDITION\",\n  \"notes\": \"Inspection completed\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": "{{baseUrl}}/api/v1/pipeline-reports"

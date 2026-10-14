@@ -120,7 +120,7 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, shift, assigned_by)
-		VALUES ($1, $2, 'DAY', $3)
+		VALUES ($1, $2, 'pagi', $3)
 	`, pipelineItem.ID, workerID, actorID); err != nil {
 		t.Fatal(err)
 	}

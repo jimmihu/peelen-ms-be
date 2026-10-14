@@ -71,6 +71,11 @@ func NewRouter(cfg Config) *gin.Engine {
 
 	operations.GET("/me/task", cfg.WorkflowHandler.MyTasks)
 	operations.GET("/me/tasks", cfg.WorkflowHandler.MyTasks)
+	operations.GET("/shifts", cfg.WorkflowHandler.ListShifts)
+	operations.POST("/shifts", cfg.WorkflowHandler.CreateShift)
+	operations.GET("/shifts/:shift", cfg.WorkflowHandler.GetShift)
+	operations.PUT("/shifts/:shift", cfg.WorkflowHandler.UpdateShift)
+	operations.DELETE("/shifts/:shift", cfg.WorkflowHandler.DeleteShift)
 
 	pipelineReports := operations.Group("/pipeline-reports")
 	pipelineReports.GET("", cfg.WorkflowHandler.ListPipelineReports)
