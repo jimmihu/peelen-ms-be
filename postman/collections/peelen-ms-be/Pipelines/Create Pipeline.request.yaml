@@ -1,0 +1,21 @@
+$kind: http-request
+url: "{{base_url}}/api/v1/pipelines"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "vendor_id": "{{vendor_id}}",
+      "name": "Sample Pipeline",
+      "description": "Sample pipeline description"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      if (pm.response.code === 201) {
+        pm.collectionVariables.set('pipeline_id', pm.response.json().data.id);
+      }
+    language: text/javascript
+order: 3000

@@ -1,0 +1,25 @@
+$kind: http-request
+description: "Filter options: vendor_id, site_id, user_id, status, from (date), to (date), page, limit (1-100)"
+url: "{{base_url}}/api/v1/inventory-reports"
+method: GET
+params:
+  - key: page
+    value: "1"
+  - key: limit
+    value: "20"
+  - key: vendor_id
+    value: "{{vendor_id}}"
+    disabled: true
+  - key: site_id
+    value: "{{site_id}}"
+    disabled: true
+  - key: status
+    value: ""
+    disabled: true
+  - key: from
+    value: ""
+    disabled: true
+  - key: to
+    value: ""
+    disabled: true
+order: 1000

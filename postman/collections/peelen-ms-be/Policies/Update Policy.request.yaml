@@ -1,0 +1,18 @@
+$kind: http-request
+description: "Update policy with multipart/form-data. PDF file is optional (max 10MB)"
+url: "{{base_url}}/api/v1/policies/{{policy_id}}"
+method: PATCH
+body:
+  type: form-data
+  content:
+    - key: name
+      value: "Updated Policy Name"
+      type: text
+    - key: status
+      value: "ACTIVE"
+      type: text
+    - key: file
+      value: ""
+      type: file
+      disabled: true
+order: 4000

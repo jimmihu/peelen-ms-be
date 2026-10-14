@@ -1,0 +1,15 @@
+$kind: http-request
+description: "Get dashboard report. Filter options: date, site_id, vendor_id"
+url: "{{base_url}}/api/v1/dashboard/report"
+method: GET
+params:
+  - key: date
+    value: ""
+    disabled: true
+  - key: site_id
+    value: "{{site_id}}"
+    disabled: true
+  - key: vendor_id
+    value: "{{vendor_id}}"
+    disabled: true
+order: 1000
