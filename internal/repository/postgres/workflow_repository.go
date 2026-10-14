@@ -318,16 +318,15 @@ func (r *WorkflowRepositoryImpl) DeleteShift(ctx context.Context, name string) e
 func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.OperationalAccess, reportDate time.Time) ([]entity.MyTask, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name,
-			p.vendor_id::text, a.shift, to_char($2::date, 'YYYY-MM-DD'),
+			p.vendor_id::text, pr.shift, to_char($2::date, 'YYYY-MM-DD'),
 			pr.id::text, pr.status, pr.status_revisi
 		FROM pipeline_item_assignments a
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
 		JOIN items i ON i.id = pi.item_id
-		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_id = pi.id
-			AND pr.user_id = a.user_id AND pr.shift = a.shift AND pr.report_date = $2::date
+		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_assignment_id = a.id AND pr.report_date = $2::date
 		WHERE a.user_id = $1 AND a.is_active AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE' AND i.status = 'ACTIVE'
-		ORDER BY p.name, pi.sort_order, i.name
+		ORDER BY p.name, pi.sort_order, i.name, pr.shift
 	`, access.UserID, reportDate)
 	if err != nil {
 		return nil, err
@@ -336,12 +335,13 @@ func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.
 	tasks := make([]entity.MyTask, 0)
 	for rows.Next() {
 		var task entity.MyTask
-		var reportID, reportStatus, statusRevisi sql.NullString
+		var shift, reportID, reportStatus, statusRevisi sql.NullString
 		if err := rows.Scan(&task.AssignmentID, &task.PipelineItemID, &task.PipelineID, &task.PipelineName,
-			&task.ItemID, &task.ItemName, &task.VendorID, &task.Shift, &task.ReportDate,
+			&task.ItemID, &task.ItemName, &task.VendorID, &shift, &task.ReportDate,
 			&reportID, &reportStatus, &statusRevisi); err != nil {
 			return nil, err
 		}
+		task.Shift = nullStringPtr(shift)
 		task.ReportID = nullStringPtr(reportID)
 		task.ReportStatus = nullStringPtr(reportStatus)
 		task.StatusRevisi = nullStringPtr(statusRevisi)
@@ -352,7 +352,7 @@ func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.
 
 func (r *WorkflowRepositoryImpl) ListPipelineReports(ctx context.Context, access entity.OperationalAccess, filter entity.ReportFilter) ([]entity.PipelineReport, int, error) {
 	where, args := pipelineReportScope(access)
-	appendReportFilters(&where, &args, filter, "p.vendor_id", "pr.user_id", "pr.status", "pr.report_date")
+	appendReportFilters(&where, &args, filter, "p.vendor_id", "a.user_id", "pr.status", "pr.report_date")
 	return queryPipelineReports(ctx, r.db, strings.Join(where, " AND "), args, filter.Page, filter.Limit)
 }
 
@@ -381,12 +381,12 @@ func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, acces
 		status = "SUBMITTED"
 	}
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO pipeline_reports (pipeline_item_id, user_id, shift, report_date, status, status_revisi)
-		SELECT pi.id, a.user_id, a.shift, $4::date, $5, COALESCE(NULLIF($6, ''), 'NONE')
+		INSERT INTO pipeline_reports (pipeline_item_assignment_id, shift, report_date, status, status_revisi)
+		SELECT a.id, $3, $4::date, $5, COALESCE(NULLIF($6, ''), 'NONE')
 		FROM pipeline_item_assignments a
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
-		WHERE pi.id = $1 AND a.user_id = $2 AND a.shift = $3 AND a.is_active
+		WHERE pi.id = $1 AND a.user_id = $2 AND a.is_active
 			AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE'
 		RETURNING id::text
 	`, input.PipelineItemID, access.UserID, input.Shift, input.ReportDate, status, input.StatusRevisi).Scan(&reportID); err != nil {
@@ -419,15 +419,14 @@ func (r *WorkflowRepositoryImpl) UpdatePipelineReport(ctx context.Context, acces
 	var previousStatus, previousRevision string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT pr.status, pr.status_revisi FROM pipeline_reports pr
-		JOIN pipeline_item_assignments a ON a.pipeline_item_id = pr.pipeline_item_id
-			AND a.user_id = pr.user_id AND a.shift = pr.shift
-		JOIN pipeline_items pi ON pi.id = pr.pipeline_item_id
+		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
 		WHERE pr.id = $1
 			AND ($2::boolean OR p.vendor_id = ANY($3::uuid[]) OR EXISTS (
 				SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($4::uuid[])
 			))
-			AND ($5::boolean OR (pr.user_id = $6 AND a.is_active))
+			AND ($5::boolean OR (a.user_id = $6 AND a.is_active))
 	`, id, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), canReview, access.UserID).
 		Scan(&previousStatus, &previousRevision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -600,7 +599,9 @@ func (r *WorkflowRepositoryImpl) ReportDashboard(ctx context.Context, access ent
 		count(*) FILTER (WHERE pr.status IN ('PENDING', 'IN_PROGRESS')),
 		count(*) FILTER (WHERE pr.status = 'SUBMITTED'),
 		count(*) FILTER (WHERE pr.status = 'COMPLETED')
-		FROM pipeline_reports pr JOIN pipeline_items pi ON pi.id = pr.pipeline_item_id
+		FROM pipeline_reports pr
+		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
 		WHERE pr.report_date = $4::date AND ` + pipelineScope
 	args := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), date}
@@ -613,7 +614,7 @@ func (r *WorkflowRepositoryImpl) ReportDashboard(ctx context.Context, access ent
 		args = append(args, vendorID)
 	}
 	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
-		pipelineQuery += fmt.Sprintf(" AND pr.user_id = $%d", len(args)+1)
+		pipelineQuery += fmt.Sprintf(" AND a.user_id = $%d", len(args)+1)
 		args = append(args, access.UserID)
 	}
 	if err := r.db.QueryRowContext(ctx, pipelineQuery, args...).Scan(&pipelineTotal, &pipelinePending, &pipelineSubmitted, &pipelineCompleted); err != nil {
@@ -666,8 +667,7 @@ func (r *WorkflowRepositoryImpl) DailyReport(ctx context.Context, access entity.
 		FROM pipelines p JOIN vendors v ON v.id = p.vendor_id
 		JOIN pipeline_items pi ON pi.pipeline_id = p.id AND pi.status = 'ACTIVE'
 		LEFT JOIN pipeline_item_assignments a ON a.pipeline_item_id = pi.id AND a.is_active
-		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_id = pi.id AND pr.user_id = a.user_id
-			AND pr.shift = a.shift AND pr.report_date = $4::date
+		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_assignment_id = a.id AND pr.report_date = $4::date
 		WHERE p.status = 'ACTIVE' AND ($1::boolean OR p.vendor_id = ANY($2::uuid[]) OR EXISTS (
 			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = p.vendor_id AND vs.site_id = ANY($3::uuid[])
 		))`
@@ -708,8 +708,9 @@ func (r *WorkflowRepositoryImpl) DailyReport(ctx context.Context, access entity.
 
 func queryPipelineReports(ctx context.Context, db *sql.DB, whereSQL string, args []any, page, limit int) ([]entity.PipelineReport, int, error) {
 	from := `pipeline_reports pr
-		JOIN users u ON u.id = pr.user_id
-		JOIN pipeline_items pi ON pi.id = pr.pipeline_item_id
+		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
+		JOIN users u ON u.id = a.user_id
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
 		JOIN items i ON i.id = pi.item_id
 		LEFT JOIN pipeline_report_details d ON d.pipeline_report_id = pr.id`
@@ -719,7 +720,7 @@ func queryPipelineReports(ctx context.Context, db *sql.DB, whereSQL string, args
 	}
 	args = append(args, limit, (page-1)*limit)
 	rows, err := db.QueryContext(ctx, `
-		SELECT pr.id::text, pi.id::text, p.id::text, i.id::text, i.name, p.vendor_id::text,
+		SELECT pr.id::text, a.id::text, pi.id::text, p.id::text, i.id::text, i.name, p.vendor_id::text,
 			u.id::text, u.username, pr.shift, to_char(pr.report_date, 'YYYY-MM-DD'),
 			pr.status, pr.status_revisi, d.evidence_before, d.evidence_after,
 			d.open_date, d.closed_date, d.note_category, d.notes, pr.created_at, pr.updated_at
@@ -744,7 +745,7 @@ func scanPipelineReport(row interface{ Scan(...any) error }) (entity.PipelineRep
 	var report entity.PipelineReport
 	var evidenceBefore, evidenceAfter, noteCategory, notes sql.NullString
 	var openDate, closedDate sql.NullTime
-	err := row.Scan(&report.ID, &report.PipelineItemID, &report.PipelineID, &report.ItemID,
+	err := row.Scan(&report.ID, &report.PipelineItemAssignmentID, &report.PipelineItemID, &report.PipelineID, &report.ItemID,
 		&report.ItemName, &report.VendorID, &report.UserID, &report.Username, &report.Shift,
 		&report.ReportDate, &report.Status, &report.StatusRevisi, &evidenceBefore, &evidenceAfter,
 		&openDate, &closedDate, &noteCategory, &notes, &report.CreatedAt, &report.UpdatedAt)
@@ -782,7 +783,7 @@ func pipelineReportScope(access entity.OperationalAccess) ([]string, []any) {
 	))`}
 	args := []any{workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)}
 	if hasWorkflowRole(access.Roles, "WORKER") && !hasWorkflowRole(access.Roles, "ADMIN_WORKER", "ADMIN", "SUPER_ADMIN") {
-		where = append(where, fmt.Sprintf("pr.user_id = $%d", len(args)+1))
+		where = append(where, fmt.Sprintf("a.user_id = $%d", len(args)+1))
 		args = append(args, access.UserID)
 	}
 	return where, args

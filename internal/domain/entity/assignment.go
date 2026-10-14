@@ -12,7 +12,6 @@ type Assignment struct {
 	VendorID       string    `json:"vendor_id"`
 	UserID         string    `json:"user_id"`
 	Username       string    `json:"username"`
-	Shift          string    `json:"shift"`
 	IsActive       bool      `json:"is_active"`
 	AssignedBy     *string   `json:"assigned_by,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -22,7 +21,6 @@ type Assignment struct {
 type AssignmentInput struct {
 	PipelineItemID string `json:"pipeline_item_id"`
 	UserID         string `json:"user_id"`
-	Shift          string `json:"shift"`
 	IsActive       *bool  `json:"is_active"`
 }
 
@@ -32,7 +30,6 @@ type AssignmentFilter struct {
 	PipelineID     string
 	PipelineItemID string
 	UserID         string
-	Shift          string
 	IsActive       *bool
 	Page           int
 	Limit          int
