@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"time"
 
 	"peelen-ms-be/internal/domain/entity"
 	"peelen-ms-be/internal/domain/repository"
@@ -16,15 +17,29 @@ type ScoringUsecase interface {
 	GetRule(ctx context.Context, actor *entity.User, id string) (*entity.ScoreRule, error)
 	ListRules(ctx context.Context, actor *entity.User, f entity.RuleFilter) ([]entity.ScoreRule, error)
 	DeleteRule(ctx context.Context, actor *entity.User, id string) error
+	LiveResults(ctx context.Context, actor *entity.User, kind, scope, vendorID string) ([]entity.ScoreResult, error)
+	ListResults(ctx context.Context, actor *entity.User, f entity.ResultFilter) ([]entity.ScoreResult, int, error)
 }
 
 type ScoringUsecaseImpl struct {
 	repository repository.ScoringRepository
+	location   *time.Location
+	now        func() time.Time
 }
 
 func NewScoringUsecase(repo repository.ScoringRepository) ScoringUsecase {
-	return &ScoringUsecaseImpl{repository: repo}
+	return &ScoringUsecaseImpl{repository: repo, location: time.UTC, now: time.Now}
 }
+
+// WithLocation sets the plant time zone used for period boundaries.
+func (u *ScoringUsecaseImpl) WithLocation(location *time.Location) *ScoringUsecaseImpl {
+	if location != nil {
+		u.location = location
+	}
+	return u
+}
+
+func (u *ScoringUsecaseImpl) Clock() time.Time { return u.now().In(u.location) }
 
 func (u *ScoringUsecaseImpl) Catalog() []scoring.Indicator { return scoring.Catalog }
 
@@ -170,4 +185,249 @@ func (u *ScoringUsecaseImpl) ListRules(ctx context.Context, actor *entity.User, 
 
 func (u *ScoringUsecaseImpl) adminVendorIDs(ctx context.Context, actor *entity.User) ([]string, error) {
 	return u.repository.VendorIDsForSites(ctx, actor.Sites)
+}
+
+func ruleItems(rule entity.ScoreRule) []scoring.Item {
+	items := make([]scoring.Item, 0, len(rule.Items))
+	for _, item := range rule.Items {
+		si := scoring.Item{Code: item.Code, Weight: item.Weight}
+		if item.Target != nil {
+			si.Target = *item.Target
+		}
+		items = append(items, si)
+	}
+	return items
+}
+
+func groupKey(c entity.ScopeCounts) string {
+	key := c.VendorID
+	if c.SiteID != nil {
+		key += "|" + *c.SiteID
+	}
+	if c.WorkerID != nil {
+		key += "|" + *c.WorkerID
+	}
+	return key
+}
+
+// evaluate scores one rule for one scope over [start, end]. Maturity rules also
+// score the previous periods needed by the level gates.
+func (u *ScoringUsecaseImpl) evaluate(ctx context.Context, rule entity.ScoreRule, scope, vendorID string,
+	siteIDs, excludeSiteIDs []string, start, end time.Time) ([]entity.ScoreResult, error) {
+	query := entity.FactQuery{Scope: scope, VendorID: vendorID, SiteIDs: siteIDs, ExcludeSiteIDs: excludeSiteIDs, From: start, To: end}
+	current, err := u.repository.AggregateFacts(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	items := ruleItems(rule)
+	base := func(c entity.ScopeCounts) entity.ScoreResult {
+		return entity.ScoreResult{Kind: rule.Kind, RuleID: rule.ID, ScopeType: scope, VendorID: c.VendorID,
+			SiteID: c.SiteID, WorkerID: c.WorkerID, PeriodType: rule.PeriodType, PeriodStart: start, PeriodEnd: end}
+	}
+	// Groups without facts: a vendor with no tasks, or a vendor site with no tasks.
+	if scope == entity.ScopeVendor && len(current) == 0 {
+		current = []entity.ScopeCounts{{VendorID: vendorID}}
+	}
+	if scope == entity.ScopeSite {
+		sites := siteIDs
+		if len(sites) == 0 {
+			if sites, err = u.repository.VendorSites(ctx, vendorID); err != nil {
+				return nil, err
+			}
+		}
+		present := map[string]bool{}
+		for _, c := range current {
+			present[*c.SiteID] = true
+		}
+		for _, site := range sites {
+			if !present[site] && !containsString(excludeSiteIDs, site) {
+				site := site
+				current = append(current, entity.ScopeCounts{VendorID: vendorID, SiteID: &site})
+			}
+		}
+	}
+
+	results := make([]entity.ScoreResult, 0, len(current))
+	if rule.Kind == entity.RuleKindSLA {
+		for _, c := range current {
+			res := base(c)
+			res.Result = scoring.EvaluateSLA(c.Counts, items)
+			results = append(results, res)
+		}
+		return results, nil
+	}
+
+	// Maturity: history[group] holds oldest..newest period results.
+	periods := scoring.MaxConsecutive(rule.Levels)
+	history := map[string][]scoring.Result{}
+	pt := scoring.PeriodType(rule.PeriodType)
+	prevStart := start
+	for i := 1; i < periods; i++ {
+		prevStart = scoring.PreviousStart(pt, prevStart)
+		_, prevEnd := scoring.PeriodBounds(pt, prevStart)
+		past, err := u.repository.AggregateFacts(ctx, entity.FactQuery{Scope: scope, VendorID: vendorID,
+			SiteIDs: siteIDs, ExcludeSiteIDs: excludeSiteIDs, From: prevStart, To: prevEnd})
+		if err != nil {
+			return nil, err
+		}
+		byKey := map[string]scoring.Counts{}
+		for _, c := range past {
+			byKey[groupKey(c)] = c.Counts
+		}
+		for _, c := range current {
+			key := groupKey(c)
+			history[key] = append([]scoring.Result{scoring.EvaluateMaturityPeriod(byKey[key], items)}, history[key]...)
+		}
+	}
+	for _, c := range current {
+		res := base(c)
+		res.Result = scoring.EvaluateMaturityPeriod(c.Counts, items)
+		res.Level = scoring.Level(append(history[groupKey(c)], res.Result), rule.Levels)
+		results = append(results, res)
+	}
+	return results, nil
+}
+
+// visibility resolves what the actor may read.
+func (u *ScoringUsecaseImpl) visibility(ctx context.Context, actor *entity.User, scope string) (entity.ResultFilter, error) {
+	var f entity.ResultFilter
+	switch {
+	case actor == nil:
+		return f, ErrForbidden
+	case hasRole(actor, "SUPER_ADMIN"):
+		f.AllVendors = true
+	case hasRole(actor, "ADMIN"):
+		vendors, err := u.repository.VendorIDsForSites(ctx, actor.Sites)
+		if err != nil {
+			return f, err
+		}
+		if scope == entity.ScopeVendor {
+			f.VendorIDs = vendors
+		} else {
+			f.SiteIDs = actor.Sites
+		}
+	case hasRole(actor, "ADMIN_WORKER"):
+		f.VendorIDs = actor.Vendors
+	case hasRole(actor, "WORKER"):
+		if scope != entity.ScopeWorker {
+			return f, ErrForbidden
+		}
+		f.OnlyWorkerID = actor.ID
+		f.AllVendors = true
+	default:
+		return f, ErrForbidden
+	}
+	return f, nil
+}
+
+func validScope(scope string) bool {
+	return scope == entity.ScopeVendor || scope == entity.ScopeSite || scope == entity.ScopeWorker
+}
+
+func (u *ScoringUsecaseImpl) ListResults(ctx context.Context, actor *entity.User, f entity.ResultFilter) ([]entity.ScoreResult, int, error) {
+	if f.Kind != entity.RuleKindSLA && f.Kind != entity.RuleKindMaturity || !validScope(f.Scope) {
+		return nil, 0, ErrInvalidOperationalData
+	}
+	vis, err := u.visibility(ctx, actor, f.Scope)
+	if err != nil {
+		return nil, 0, err
+	}
+	f.AllVendors, f.VendorIDs, f.SiteIDs, f.OnlyWorkerID = vis.AllVendors, vis.VendorIDs, vis.SiteIDs, vis.OnlyWorkerID
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.Limit < 1 || f.Limit > 100 {
+		f.Limit = 20
+	}
+	if f.To.IsZero() {
+		f.To = u.Clock().AddDate(0, 0, 1)
+	}
+	if f.From.IsZero() {
+		f.From = f.To.AddDate(-1, 0, 0)
+	}
+	return u.repository.ListResults(ctx, f)
+}
+
+// LiveResults scores the running period of every active rule the actor can see.
+func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User, kind, scope, vendorID string) ([]entity.ScoreResult, error) {
+	if kind != entity.RuleKindSLA && kind != entity.RuleKindMaturity || !validScope(scope) {
+		return nil, ErrInvalidOperationalData
+	}
+	vis, err := u.visibility(ctx, actor, scope)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := u.repository.ListRules(ctx, entity.RuleFilter{Kind: kind, VendorID: vendorID, ActiveOnly: true,
+		AllVendors: vis.AllVendors || len(vis.SiteIDs) > 0, VendorIDs: vis.VendorIDs})
+	if err != nil {
+		return nil, err
+	}
+	today := u.Clock()
+	var results []entity.ScoreResult
+	defaults := map[string]entity.ScoreRule{}
+	overrides := map[string][]entity.ScoreRule{}
+	for _, rule := range rules {
+		if rule.SiteID == nil {
+			defaults[rule.VendorID] = rule
+		} else {
+			overrides[rule.VendorID] = append(overrides[rule.VendorID], rule)
+		}
+	}
+	for vendor, rule := range defaults {
+		start, end := scoring.PeriodBounds(scoring.PeriodType(rule.PeriodType), today)
+		var exclude []string
+		for _, o := range overrides[vendor] {
+			exclude = append(exclude, *o.SiteID)
+		}
+		var res []entity.ScoreResult
+		if scope == entity.ScopeVendor {
+			res, err = u.evaluate(ctx, rule, scope, vendor, nil, nil, start, end)
+		} else {
+			res, err = u.evaluate(ctx, rule, scope, vendor, nil, exclude, start, end)
+		}
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, res...)
+	}
+	if scope != entity.ScopeVendor {
+		for vendor, list := range overrides {
+			for _, rule := range list {
+				start, end := scoring.PeriodBounds(scoring.PeriodType(rule.PeriodType), today)
+				res, err := u.evaluate(ctx, rule, scope, vendor, []string{*rule.SiteID}, nil, start, end)
+				if err != nil {
+					return nil, err
+				}
+				results = append(results, res...)
+			}
+		}
+	}
+	// Vendors in view without any rule.
+	if scope == entity.ScopeVendor && vendorID != "" {
+		if _, ok := defaults[vendorID]; !ok {
+			results = append(results, entity.ScoreResult{Kind: kind, ScopeType: scope, VendorID: vendorID,
+				Result: scoring.Result{Status: entity.ResultStatusNoRule}})
+		}
+	}
+	filtered := results[:0]
+	for _, r := range results {
+		r.Live = true
+		if visibleResult(vis, r) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, nil
+}
+
+func visibleResult(vis entity.ResultFilter, r entity.ScoreResult) bool {
+	if vis.OnlyWorkerID != "" {
+		return r.WorkerID != nil && *r.WorkerID == vis.OnlyWorkerID
+	}
+	if vis.AllVendors {
+		return true
+	}
+	if containsString(vis.VendorIDs, r.VendorID) {
+		return true
+	}
+	return r.SiteID != nil && containsString(vis.SiteIDs, *r.SiteID)
 }
