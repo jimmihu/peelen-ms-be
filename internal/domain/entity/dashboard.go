@@ -3,6 +3,8 @@ package entity
 import "time"
 
 type DashboardFilter struct {
+	UserID   string `json:"-"`
+	IsWorker bool   `json:"-"`
 	SiteID   string `json:"site_id"`
 	VendorID string `json:"vendor_id"`
 	Date     string `json:"date"`
@@ -12,6 +14,7 @@ type DashboardTaskSummary struct {
 	TotalTask  int64 `json:"total_task"`
 	InProgress int64 `json:"in_progress"`
 	Completed  int64 `json:"completed"`
+	NotStarted int64 `json:"pending"`
 }
 
 type DashboardVendorProgress struct {
@@ -20,6 +23,7 @@ type DashboardVendorProgress struct {
 	TotalTask          int64   `json:"total_task"`
 	Completed          int64   `json:"completed"`
 	InProgress         int64   `json:"in_progress"`
+	NotStarted         int64   `json:"pending"`
 	ProgressPercentage float64 `json:"progress_percentage"`
 }
 
@@ -51,9 +55,9 @@ type DashboardSafetyReport struct {
 }
 
 type DashboardResponse struct {
-	Filter          DashboardFilter             `json:"filter"`
-	TaskSummary     DashboardTaskSummary        `json:"task_summary"`
-	VendorProgress  []DashboardVendorProgress   `json:"vendor_progress"`
-	InventoryReport []DashboardInventoryReport  `json:"inventory_reports"`
-	SafetyReports   []DashboardSafetyReport     `json:"safety_reports"`
+	Filter          DashboardFilter            `json:"filter"`
+	TaskSummary     DashboardTaskSummary       `json:"task_summary"`
+	VendorProgress  []DashboardVendorProgress  `json:"vendor_progress"`
+	InventoryReport []DashboardInventoryReport `json:"inventory_reports"`
+	SafetyReports   []DashboardSafetyReport    `json:"safety_reports"`
 }

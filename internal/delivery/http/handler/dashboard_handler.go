@@ -15,10 +15,23 @@ type DashboardHandler struct {
 }
 
 func NewDashboardHandler(dashboardUsecase usecase.DashboardUsecase) *DashboardHandler {
-	return &DashboardHandler{usecase: dashboardUsecase}
+	return &DashboardHandler{
+		usecase: dashboardUsecase,
+	}
 }
 
 func (h *DashboardHandler) GetDashboard(c *gin.Context) {
+	actor := currentUser(c)
+	if actor == nil {
+		writeError(
+			c,
+			http.StatusUnauthorized,
+			"Unauthorized",
+			"User authentication is required",
+		)
+		return
+	}
+
 	siteID := strings.TrimSpace(c.Query("site_id"))
 	vendorID := strings.TrimSpace(c.Query("vendor_id"))
 	date := strings.TrimSpace(c.Query("date"))
@@ -27,7 +40,8 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 		date = time.Now().Format("2006-01-02")
 	}
 
-	if _, err := time.Parse("2006-01-02", date); err != nil {
+	parsedDate, err := time.Parse("2006-01-02", date)
+	if err != nil || parsedDate.Format("2006-01-02") != date {
 		writeError(
 			c,
 			http.StatusBadRequest,
@@ -39,7 +53,7 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 
 	result, err := h.usecase.GetDashboard(
 		c.Request.Context(),
-		currentUser(c),
+		actor,
 		siteID,
 		vendorID,
 		date,

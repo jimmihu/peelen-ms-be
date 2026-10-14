@@ -38,16 +38,17 @@ func (r *DashboardRepositoryImpl) GetDashboard(
 		filter.SiteID,
 		filter.VendorID,
 		filter.Date,
+		filter.IsWorker,
+		filter.UserID,
 	}
 
 	fmt.Printf(
-		"[Dashboard] site_id=%v vendor_id=%v date=%v super_admin=%v vendor_ids=%v site_ids=%v\n",
+		"[Dashboard] site_id=%v vendor_id=%v date=%v worker=%v super_admin=%v\n",
 		filter.SiteID,
 		filter.VendorID,
 		filter.Date,
+		filter.IsWorker,
 		workflowSuperAdmin(access),
-		access.VendorIDs,
-		access.SiteIDs,
 	)
 
 	if err := r.getTaskSummary(ctx, args, &result.TaskSummary); err != nil {
@@ -73,10 +74,11 @@ func (r *DashboardRepositoryImpl) GetDashboard(
 	result.SafetyReports = safety
 
 	fmt.Printf(
-		"[Dashboard] result task_total=%d task_in_progress=%d task_completed=%d vendors=%d inventory_reports=%d safety_reports=%d\n",
+		"[Dashboard] result total=%d in_progress=%d completed=%d not_started=%d vendors=%d inventory_reports=%d safety_reports=%d\n",
 		result.TaskSummary.TotalTask,
 		result.TaskSummary.InProgress,
 		result.TaskSummary.Completed,
+		result.TaskSummary.NotStarted,
 		len(result.VendorProgress),
 		len(result.InventoryReport),
 		len(result.SafetyReports),
@@ -130,10 +132,20 @@ func dashboardVendorFilter(alias string) string {
 	)`, alias)
 }
 
+func dashboardWorkerFilter(alias string) string {
+	return fmt.Sprintf(`(
+		NOT $7::boolean
+		OR %s.user_id = NULLIF($8, '')::uuid
+	)`, alias)
+}
+
 func dashboardDateRange(alias, column string) string {
 	return fmt.Sprintf(
 		"%s.%s >= ($6::date::timestamp AT TIME ZONE 'Asia/Jakarta') AND %s.%s < (($6::date + 1)::timestamp AT TIME ZONE 'Asia/Jakarta')",
-		alias, column, alias, column,
+		alias,
+		column,
+		alias,
+		column,
 	)
 }
 
@@ -144,31 +156,35 @@ func (r *DashboardRepositoryImpl) getTaskSummary(
 ) error {
 	query := `
 		SELECT
-			COUNT(*) AS total_task,
-			COUNT(*) FILTER (
+			COUNT(DISTINCT pia.id) AS total_task,
+			COUNT(DISTINCT pia.id) FILTER (
 				WHERE pr.status = 'IN_PROGRESS'
 			) AS in_progress,
-			COUNT(*) FILTER (
+			COUNT(DISTINCT pia.id) FILTER (
 				WHERE pr.status = 'COMPLETED'
-			) AS completed
-		FROM pipeline_reports pr
-		JOIN pipeline_item_assignments pia
-			ON pia.id = pr.pipeline_item_assignment_id
+			) AS completed,
+			COUNT(DISTINCT pia.id) FILTER (
+				WHERE pr.id IS NULL
+			) AS not_started
+		FROM pipeline_item_assignments pia
 		JOIN pipeline_items pi
 			ON pi.id = pia.pipeline_item_id
 		JOIN pipelines p
 			ON p.id = pi.pipeline_id
-		WHERE pr.report_date = $6::date
-		  AND pia.is_active = TRUE
+		LEFT JOIN pipeline_reports pr
+			ON pr.pipeline_item_assignment_id = pia.id
+		   AND pr.report_date = $6::date
+		WHERE pia.is_active = TRUE
 		  AND ` + dashboardPipelineScope() + `
 		  AND ` + dashboardSiteFilter("p") + `
 		  AND ` + dashboardVendorFilter("p") + `
-	`
+		  AND ` + dashboardWorkerFilter("pia")
 
 	return r.db.QueryRowContext(ctx, query, args...).Scan(
 		&result.TotalTask,
 		&result.InProgress,
 		&result.Completed,
+		&result.NotStarted,
 	)
 }
 
@@ -180,36 +196,40 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		SELECT
 			v.id::text,
 			v.name,
-			COUNT(*) AS total_task,
-			COUNT(*) FILTER (
+			COUNT(DISTINCT pia.id) AS total_task,
+			COUNT(DISTINCT pia.id) FILTER (
 				WHERE pr.status = 'COMPLETED'
 			) AS completed,
-			COUNT(*) FILTER (
+			COUNT(DISTINCT pia.id) FILTER (
 				WHERE pr.status = 'IN_PROGRESS'
 			) AS in_progress,
+			COUNT(DISTINCT pia.id) FILTER (
+				WHERE pr.id IS NULL
+			) AS not_started,
 			COALESCE(
 				ROUND(
-					100.0 * COUNT(*) FILTER (
+					100.0 * COUNT(DISTINCT pia.id) FILTER (
 						WHERE pr.status = 'COMPLETED'
-					) / NULLIF(COUNT(*), 0),
+					) / NULLIF(COUNT(DISTINCT pia.id), 0),
 					0
 				),
 				0
 			) AS progress_percentage
-		FROM pipeline_reports pr
-		JOIN pipeline_item_assignments pia
-			ON pia.id = pr.pipeline_item_assignment_id
+		FROM pipeline_item_assignments pia
 		JOIN pipeline_items pi
 			ON pi.id = pia.pipeline_item_id
 		JOIN pipelines p
 			ON p.id = pi.pipeline_id
 		JOIN vendors v
 			ON v.id = p.vendor_id
-		WHERE pr.report_date = $6::date
-		  AND pia.is_active = TRUE
+		LEFT JOIN pipeline_reports pr
+			ON pr.pipeline_item_assignment_id = pia.id
+		   AND pr.report_date = $6::date
+		WHERE pia.is_active = TRUE
 		  AND ` + dashboardPipelineScope() + `
 		  AND ` + dashboardSiteFilter("p") + `
 		  AND ` + dashboardVendorFilter("p") + `
+		  AND ` + dashboardWorkerFilter("pia") + `
 		GROUP BY v.id, v.name
 		ORDER BY v.name
 	`
@@ -231,6 +251,7 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			&item.TotalTask,
 			&item.Completed,
 			&item.InProgress,
+			&item.NotStarted,
 			&item.ProgressPercentage,
 		); err != nil {
 			return nil, err
@@ -270,6 +291,7 @@ func (r *DashboardRepositoryImpl) getInventoryReports(
 		  AND ` + dashboardInventoryScope() + `
 		  AND ` + dashboardSiteFilter("ir") + `
 		  AND ` + dashboardVendorFilter("ir") + `
+		  AND ` + dashboardWorkerFilter("ir") + `
 		ORDER BY ir.created_at DESC
 		LIMIT 10
 	`
@@ -358,6 +380,7 @@ func (r *DashboardRepositoryImpl) getSafetyReports(
 		  )
 		  AND ` + dashboardDateRange("d", "created_at") + `
 		  AND ` + dashboardPipelineScope() + `
+		  AND ` + dashboardWorkerFilter("pia") + `
 		  AND d.note_category IS NOT NULL
 		  AND TRIM(d.note_category) <> ''
 		  AND TRIM(d.note_category) <> '-'

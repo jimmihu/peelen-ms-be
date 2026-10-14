@@ -9,7 +9,13 @@ import (
 )
 
 type DashboardUsecase interface {
-	GetDashboard(context.Context, *entity.User, string, string, string) (*entity.DashboardResponse, error)
+	GetDashboard(
+		context.Context,
+		*entity.User,
+		string,
+		string,
+		string,
+	) (*entity.DashboardResponse, error)
 }
 
 type DashboardUsecaseImpl struct {
@@ -17,7 +23,9 @@ type DashboardUsecaseImpl struct {
 }
 
 func NewDashboardUsecase(repo repository.DashboardRepository) DashboardUsecase {
-	return &DashboardUsecaseImpl{repository: repo}
+	return &DashboardUsecaseImpl{
+		repository: repo,
+	}
 }
 
 func (u *DashboardUsecaseImpl) GetDashboard(
@@ -31,6 +39,10 @@ func (u *DashboardUsecaseImpl) GetDashboard(
 		return nil, err
 	}
 
+	if !hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER", "WORKER") {
+		return nil, ErrForbidden
+	}
+
 	if siteID != "" && !scopeUUIDPattern.MatchString(siteID) {
 		return nil, ErrInvalidOperationalData
 	}
@@ -39,19 +51,20 @@ func (u *DashboardUsecaseImpl) GetDashboard(
 		return nil, ErrInvalidOperationalData
 	}
 
-	if _, err := time.Parse("2006-01-02", date); err != nil {
+	parsedDate, err := time.Parse("2006-01-02", date)
+	if err != nil || parsedDate.Format("2006-01-02") != date {
 		return nil, ErrInvalidOperationalData
 	}
 
-	if !hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER") {
-		return nil, ErrForbidden
-	}
-
 	filter := entity.DashboardFilter{
+		UserID:   actor.ID,
+		IsWorker: hasRole(actor, "WORKER"),
 		SiteID:   siteID,
 		VendorID: vendorID,
 		Date:     date,
 	}
 
-	return u.repository.GetDashboard(ctx, operationalAccess(actor), filter)
+	access := operationalAccess(actor)
+
+	return u.repository.GetDashboard(ctx, access, filter)
 }
