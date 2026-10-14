@@ -19,6 +19,9 @@ type ScoringUsecase interface {
 	DeleteRule(ctx context.Context, actor *entity.User, id string) error
 	LiveResults(ctx context.Context, actor *entity.User, kind, scope, vendorID string) ([]entity.ScoreResult, error)
 	ListResults(ctx context.Context, actor *entity.User, f entity.ResultFilter) ([]entity.ScoreResult, int, error)
+	FinalizeFacts(ctx context.Context) (int64, error)
+	ClosePeriods(ctx context.Context) (int, error)
+	RunJobCycle(ctx context.Context) error
 }
 
 type ScoringUsecaseImpl struct {
@@ -430,4 +433,115 @@ func visibleResult(vis entity.ResultFilter, r entity.ScoreResult) bool {
 		return true
 	}
 	return r.SiteID != nil && containsString(vis.SiteIDs, *r.SiteID)
+}
+
+func (u *ScoringUsecaseImpl) FinalizeFacts(ctx context.Context) (int64, error) {
+	return u.repository.FinalizeFacts(ctx)
+}
+
+// activeAt reports whether a rule version is in force at instant at.
+func activeAt(rule entity.ScoreRule, at time.Time) bool {
+	return !rule.CreatedAt.After(at) && (rule.SupersededAt == nil || rule.SupersededAt.After(at))
+}
+
+// ClosePeriods freezes every finished, fully final period of every rule key,
+// scored with the version active when the period ended.
+func (u *ScoringUsecaseImpl) ClosePeriods(ctx context.Context) (int, error) {
+	lastFinal, err := u.repository.LastFinalDate(ctx)
+	if err != nil {
+		return 0, err
+	}
+	// The database returns a date at UTC midnight; compare it as a plant-local date.
+	lastFinal = time.Date(lastFinal.Year(), lastFinal.Month(), lastFinal.Day(), 0, 0, 0, 0, u.location)
+	keys, err := u.repository.RuleKeys(ctx)
+	if err != nil {
+		return 0, err
+	}
+	closed := 0
+	for _, key := range keys {
+		versions, err := u.repository.RuleVersions(ctx, key)
+		if err != nil {
+			return closed, err
+		}
+		for _, version := range versions {
+			pt := scoring.PeriodType(version.PeriodType)
+			start, end := scoring.PeriodBounds(pt, version.CreatedAt.In(u.location))
+			for !end.After(lastFinal) {
+				periodEndAt := end.AddDate(0, 0, 1) // 00:00 after the last day
+				if activeAt(version, periodEndAt) {
+					done, err := u.closePeriod(ctx, version, start, end, periodEndAt)
+					if err != nil {
+						return closed, err
+					}
+					if done {
+						closed++
+					}
+				}
+				start = end.AddDate(0, 0, 1)
+				_, end = scoring.PeriodBounds(pt, start)
+			}
+		}
+	}
+	return closed, nil
+}
+
+// closePeriod freezes one rule version for one period; false if already frozen.
+func (u *ScoringUsecaseImpl) closePeriod(ctx context.Context, rule entity.ScoreRule, start, end, endAt time.Time) (bool, error) {
+	anchor := entity.ScopeVendor
+	if rule.SiteID != nil {
+		anchor = entity.ScopeSite
+	}
+	exists, err := u.repository.ResultExists(ctx, rule.Kind, anchor, rule.VendorID, rule.SiteID, rule.PeriodType, start)
+	if err != nil || exists {
+		return false, err
+	}
+	var batches [][]entity.ScoreResult
+	if rule.SiteID == nil {
+		overrides, err := u.repository.OverrideSitesAt(ctx, rule.Kind, rule.VendorID, endAt)
+		if err != nil {
+			return false, err
+		}
+		for _, scope := range []string{entity.ScopeVendor, entity.ScopeSite, entity.ScopeWorker} {
+			var exclude []string
+			if scope != entity.ScopeVendor {
+				exclude = overrides
+			}
+			res, err := u.evaluate(ctx, rule, scope, rule.VendorID, nil, exclude, start, end)
+			if err != nil {
+				return false, err
+			}
+			batches = append(batches, res)
+		}
+	} else {
+		for _, scope := range []string{entity.ScopeSite, entity.ScopeWorker} {
+			res, err := u.evaluate(ctx, rule, scope, rule.VendorID, []string{*rule.SiteID}, nil, start, end)
+			if err != nil {
+				return false, err
+			}
+			batches = append(batches, res)
+		}
+	}
+	// Save the anchor scope last so a crash mid-way is retried on the next run.
+	for i := len(batches) - 1; i >= 0; i-- {
+		for _, res := range batches[i] {
+			if err := u.repository.SaveResult(ctx, res); err != nil {
+				return false, err
+			}
+		}
+	}
+	return true, nil
+}
+
+// RunJobCycle runs one finalize + close pass if this instance holds the job lock.
+func (u *ScoringUsecaseImpl) RunJobCycle(ctx context.Context) error {
+	_, err := u.repository.WithJobLock(ctx, func(ctx context.Context) error {
+		if _, err := u.FinalizeFacts(ctx); err != nil {
+			return fmt.Errorf("finalize facts: %w", err)
+		}
+		if _, err := u.ClosePeriods(ctx); err != nil {
+			return fmt.Errorf("close periods: %w", err)
+		}
+		return nil
+	})
+	return err
 }
