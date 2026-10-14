@@ -70,3 +70,36 @@ type RuleFilter struct {
 	AllVendors bool
 	VendorIDs  []string
 }
+
+type RuleKey struct {
+	Kind     string
+	VendorID string
+	SiteID   *string
+}
+
+type ScoreResult struct {
+	ID          string    `json:"id,omitempty"`
+	Kind        string    `json:"kind"`
+	RuleID      string    `json:"rule_id,omitempty"`
+	ScopeType   string    `json:"scope_type"`
+	VendorID    string    `json:"vendor_id"`
+	SiteID      *string   `json:"site_id,omitempty"`
+	WorkerID    *string   `json:"worker_id,omitempty"`
+	PeriodType  string    `json:"period_type,omitempty"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+	Live        bool      `json:"live"`
+	scoring.Result
+}
+
+type ResultFilter struct {
+	Kind, Scope                string
+	VendorID, SiteID, WorkerID string
+	From, To                   time.Time
+	Page, Limit                int
+	// Visibility, set by the usecase.
+	AllVendors   bool
+	VendorIDs    []string
+	SiteIDs      []string
+	OnlyWorkerID string
+}
