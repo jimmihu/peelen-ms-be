@@ -223,3 +223,11 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 func stringPtr(value string) *string {
 	return &value
 }
+
+func TestPipelineWriteScopeUsesSiteParameter(t *testing.T) {
+	got := pipelineWriteScope("p", 6)
+	want := `($6::boolean OR p.vendor_id = ANY($7::uuid[]) OR p.site_id = ANY($8::uuid[]))`
+	if got != want {
+		t.Fatalf("pipelineWriteScope = %s\nwant %s", got, want)
+	}
+}
