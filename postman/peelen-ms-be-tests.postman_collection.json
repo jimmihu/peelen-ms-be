@@ -6078,14 +6078,14 @@
                   "type": "text"
                 },
                 {
-                  "key": "title",
+                  "key": "name",
                   "value": "Test Policy",
                   "type": "text"
                 },
                 {
-                  "key": "description",
-                  "value": "Test policy description",
-                  "type": "text"
+                  "key": "file",
+                  "type": "file",
+                  "src": []
                 }
               ]
             }
@@ -6100,6 +6100,50 @@
                   "if (pm.response.code === 201) {",
                   "  pm.collectionVariables.set('policy_id', pm.response.json().data.id);",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Missing File",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/policies",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "policies"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Test Policy",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function() { pm.response.to.have.status(400); });"
                 ]
               }
             }
@@ -6130,9 +6174,14 @@
                   "type": "text"
                 },
                 {
-                  "key": "title",
+                  "key": "name",
                   "value": "Test Policy",
                   "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
                 }
               ]
             },
@@ -6349,8 +6398,8 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "title",
-                  "value": "Updated Policy Title",
+                  "key": "name",
+                  "value": "Updated Policy Name",
                   "type": "text"
                 }
               ]
@@ -6363,6 +6412,40 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 200', function() { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Empty Body",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/policies/{{policy_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "policies",
+                "{{policy_id}}"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function() { pm.response.to.have.status(400); });"
                 ]
               }
             }
@@ -6389,8 +6472,8 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "title",
-                  "value": "Updated Policy Title",
+                  "key": "name",
+                  "value": "Updated Policy Name",
                   "type": "text"
                 }
               ]
@@ -6432,8 +6515,8 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "title",
-                  "value": "Updated Policy Title",
+                  "key": "name",
+                  "value": "Updated Policy Name",
                   "type": "text"
                 }
               ]
@@ -6673,7 +6756,7 @@
           ]
         },
         {
-          "name": "400 - Missing Required Fields",
+          "name": "400 - Invalid JSON Body",
           "request": {
             "method": "POST",
             "header": [
@@ -6695,7 +6778,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{}"
+              "raw": "not-json"
             }
           },
           "event": [
@@ -7099,7 +7182,7 @@
           ]
         },
         {
-          "name": "400 - Missing Required Fields",
+          "name": "400 - Invalid JSON Body",
           "request": {
             "method": "POST",
             "header": [
@@ -7121,7 +7204,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{}"
+              "raw": "not-json"
             }
           },
           "event": [
