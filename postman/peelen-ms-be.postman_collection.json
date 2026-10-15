@@ -34,11 +34,11 @@
     },
     {
       "key": "username",
-      "value": "superadmin"
+      "value": "w.vnd005.09"
     },
     {
       "key": "password",
-      "value": "Password123!"
+      "value": ""
     },
     {
       "key": "access_token",
@@ -46,15 +46,15 @@
     },
     {
       "key": "user_id",
-      "value": ""
+      "value": "ed793e16-57a6-4a0b-b8fe-986b8ee125b2"
     },
     {
       "key": "site_id",
-      "value": ""
+      "value": "da8d87a6-5909-484d-b9fa-ed35eb0ca785"
     },
     {
       "key": "vendor_id",
-      "value": ""
+      "value": "a522514f-e592-4976-9603-87d909c6c80c"
     },
     {
       "key": "shift",
@@ -74,7 +74,7 @@
     },
     {
       "key": "inventory_id",
-      "value": ""
+      "value": "308b01ea-4cba-4c27-b0c9-33ce84dfb436"
     },
     {
       "key": "inventory_report_id",
@@ -2404,19 +2404,18 @@
                 },
                 {
                   "key": "report_type",
-                  "value": "REQUEST",
+                  "value": "DAMAGED",
                   "type": "text"
                 },
                 {
                   "key": "description",
-                  "value": "Inventory evidence from worker",
+                  "value": "Inventory damage report with photo evidence",
                   "type": "text"
                 },
                 {
                   "key": "inventory_id",
                   "value": "{{inventory_id}}",
-                  "type": "text",
-                  "disabled": true
+                  "type": "text"
                 },
                 {
                   "key": "file",
