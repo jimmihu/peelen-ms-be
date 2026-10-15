@@ -10,6 +10,7 @@ var (
 	ErrInvalidOperationalData     = errors.New("invalid operational data")
 	ErrInvalidOperationalStatus   = errors.New("invalid operational status")
 	ErrInvalidOperationalResource = errors.New("invalid operational resource")
+	ErrReportUploadClosed         = errors.New("report upload window has closed; it ends when the same shift starts the next day")
 )
 
 type OperationalResource string
@@ -25,6 +26,7 @@ const (
 type OperationalRecord struct {
 	ID          string    `json:"id"`
 	VendorID    *string   `json:"vendor_id,omitempty"`
+	SiteID      *string   `json:"site_id,omitempty"`
 	Name        string    `json:"name,omitempty"`
 	Description *string   `json:"description,omitempty"`
 	Item        string    `json:"item,omitempty"`
@@ -45,6 +47,7 @@ type OperationalRecord struct {
 
 type OperationalInput struct {
 	VendorID    *string `json:"vendor_id"`
+	SiteID      *string `json:"site_id"`
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Item        *string `json:"item"`

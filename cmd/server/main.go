@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // APP_TIMEZONE must load even on images without tzdata
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -18,6 +19,7 @@ import (
 	"peelen-ms-be/internal/infrastructure/config"
 	"peelen-ms-be/internal/infrastructure/database"
 	"peelen-ms-be/internal/infrastructure/storage"
+	"peelen-ms-be/internal/jobs"
 	"peelen-ms-be/internal/repository/postgres"
 	"peelen-ms-be/internal/usecase"
 )
@@ -38,6 +40,11 @@ func main() {
 	}
 	if err := cfg.ObjectStorage.Validate(); err != nil {
 		log.Fatalf("Invalid object storage configuration: %v", err)
+	}
+
+	location, err := time.LoadLocation(cfg.Database.TimeZone)
+	if err != nil {
+		log.Fatalf("Invalid APP_TIMEZONE %q: %v", cfg.Database.TimeZone, err)
 	}
 
 	// Set Gin mode
@@ -84,10 +91,16 @@ func main() {
 	operationalHandler := handler.NewOperationalHandler(operationalUsecase, objectStorage)
 	workflowRepository := postgres.NewWorkflowRepository(db)
 	workflowUsecase := usecase.NewWorkflowUsecase(workflowRepository)
-	workflowHandler := handler.NewWorkflowHandler(workflowUsecase)
+	workflowHandler := handler.NewWorkflowHandler(workflowUsecase, objectStorage, location)
 	assignmentRepository := postgres.NewAssignmentRepository(db)
 	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepository)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentUsecase)
+	scoringRepository := postgres.NewScoringRepository(db)
+	scoringUsecase := usecase.NewScoringUsecase(scoringRepository).(*usecase.ScoringUsecaseImpl).WithLocation(location)
+	scoringHandler := handler.NewScoringHandler(scoringUsecase)
+	jobCtx, stopJobs := context.WithCancel(context.Background())
+	defer stopJobs()
+	jobs.StartScoringJob(jobCtx, scoringUsecase, 15*time.Minute)
 
 	dashboardRepository := postgres.NewDashboardRepository(db)
 	dashboardUsecase := usecase.NewDashboardUsecase(dashboardRepository)
@@ -103,6 +116,7 @@ func main() {
 		OperationalHandler: operationalHandler,
 		WorkflowHandler:    workflowHandler,
 		AssignmentHandler:  assignmentHandler,
+		ScoringHandler:     scoringHandler,
 		DashboardHandler:   dashboardHandler,
 		AuthMiddleware:     authMiddleware,
 		EnforceHTTPS:       cfg.Server.Mode == "release",
@@ -141,6 +155,7 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+	stopJobs()
 
 	// Create a deadline to wait for
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

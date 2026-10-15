@@ -237,7 +237,7 @@ func normalizeShift(shift entity.Shift) (entity.Shift, error) {
 }
 
 func normalizeShiftName(value string) (string, error) {
-	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ToUpper(strings.TrimSpace(value))
 	if !validShift(value) {
 		return "", ErrInvalidOperationalData
 	}
@@ -285,10 +285,11 @@ func (u *WorkflowUsecaseImpl) CreatePipelineReport(ctx context.Context, actor *e
 		return nil, err
 	}
 	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || !validShift(input.Shift) ||
-		input.Status != "" && input.Status != "SUBMITTED" && input.Status != "IN_PROGRESS" ||
-		input.StatusRevisi != "" && input.StatusRevisi != "NONE" && input.StatusRevisi != "RESUBMITTED" ||
-		!validNoteCategory(input.NoteCategory) {
+		!validReportStatus(input.Status) || !validNoteCategory(input.NoteCategory) {
 		return nil, ErrInvalidOperationalData
+	}
+	if input.Status == "COMPLETED" && (input.EvidenceAfter == nil || input.ClosedDate == nil) {
+		return nil, fmt.Errorf("%w: evidence_after and closed_date are required to complete a report", ErrInvalidOperationalData)
 	}
 	if _, err := parseReportDate(input.ReportDate); err != nil {
 		return nil, err
@@ -296,13 +297,13 @@ func (u *WorkflowUsecaseImpl) CreatePipelineReport(ctx context.Context, actor *e
 	if input.ClosedDate != nil && input.OpenDate != nil && input.ClosedDate.Before(*input.OpenDate) {
 		return nil, ErrInvalidOperationalData
 	}
-	input.Shift = strings.ToLower(strings.TrimSpace(input.Shift))
+	input.Shift = strings.ToUpper(strings.TrimSpace(input.Shift))
 	return u.repository.CreatePipelineReport(ctx, operationalAccess(actor), input)
 }
 
 func validShift(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "pagi", "siang", "malam":
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "DAY", "EVENING", "NIGHT":
 		return true
 	default:
 		return false
@@ -316,24 +317,14 @@ func (u *WorkflowUsecaseImpl) UpdatePipelineReport(ctx context.Context, actor *e
 	if !scopeUUIDPattern.MatchString(id) {
 		return nil, ErrNotFound
 	}
-	manager := hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER")
-	worker := hasRole(actor, "WORKER")
-	if !manager && !worker {
+	// Reports are Worker-owned; managers only read them (no review step).
+	if !hasRole(actor, "WORKER") {
 		return nil, ErrForbidden
 	}
-	if manager {
-		if input.Status != "" && input.Status != "COMPLETED" && input.Status != "REJECTED" &&
-			input.Status != "IN_PROGRESS" && input.Status != "SUBMITTED" {
-			return nil, ErrInvalidOperationalData
-		}
-		if input.StatusRevisi != "" && input.StatusRevisi != "REQUESTED" && input.StatusRevisi != "NONE" {
-			return nil, ErrInvalidOperationalData
-		}
-	} else if input.Status != "" && input.Status != "IN_PROGRESS" && input.Status != "SUBMITTED" ||
-		input.StatusRevisi != "" && input.StatusRevisi != "RESUBMITTED" {
-		return nil, ErrForbidden
+	if !validReportStatus(input.Status) {
+		return nil, ErrInvalidOperationalData
 	}
-	if input.Status == "" && input.StatusRevisi == "" && input.EvidenceBefore == nil && input.EvidenceAfter == nil &&
+	if input.Status == "" && input.EvidenceBefore == nil && input.EvidenceAfter == nil &&
 		input.OpenDate == nil && input.ClosedDate == nil && input.NoteCategory == nil && input.Notes == nil {
 		return nil, ErrInvalidOperationalData
 	}
@@ -341,7 +332,13 @@ func (u *WorkflowUsecaseImpl) UpdatePipelineReport(ctx context.Context, actor *e
 		input.ClosedDate != nil && input.OpenDate != nil && input.ClosedDate.Before(*input.OpenDate) {
 		return nil, ErrInvalidOperationalData
 	}
-	return u.repository.UpdatePipelineReport(ctx, operationalAccess(actor), id, input, manager)
+	return u.repository.UpdatePipelineReport(ctx, operationalAccess(actor), id, input)
+}
+
+// validReportStatus accepts the Worker-settable pipeline report statuses;
+// status_revisi is derived by the server from the shift window.
+func validReportStatus(status string) bool {
+	return status == "" || status == "IN_PROGRESS" || status == "COMPLETED"
 }
 
 func (u *WorkflowUsecaseImpl) ListInventoryReports(ctx context.Context, actor *entity.User, filter entity.ReportFilter) ([]entity.InventoryReport, int, error) {

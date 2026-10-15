@@ -21,6 +21,10 @@ func NewPostgresConnection(cfg config.DatabaseConfig) (*sql.DB, error) {
 	}
 	query := url.Values{}
 	query.Set("sslmode", cfg.SSLMode)
+	if cfg.TimeZone != "" {
+		// Unknown keys are sent to PostgreSQL as session parameters.
+		query.Set("timezone", cfg.TimeZone)
+	}
 	connectionURL.RawQuery = query.Encode()
 
 	db, err := sql.Open("postgres", connectionURL.String())

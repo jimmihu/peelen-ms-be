@@ -156,6 +156,7 @@ func validateOperationalInput(resource entity.OperationalResource, input entity.
 		return ErrInvalidOperationalData
 	}
 	if input.VendorID != nil && !scopeUUIDPattern.MatchString(*input.VendorID) ||
+		input.SiteID != nil && !scopeUUIDPattern.MatchString(*input.SiteID) ||
 		input.PipelineID != nil && !scopeUUIDPattern.MatchString(*input.PipelineID) ||
 		input.ItemID != nil && !scopeUUIDPattern.MatchString(*input.ItemID) {
 		return ErrInvalidOperationalData
@@ -170,11 +171,12 @@ func validateOperationalInput(resource entity.OperationalResource, input entity.
 				value := "GOOD"
 				input.Condition = &value
 			}
-		case entity.ResourcePolicy, entity.ResourcePipeline:
-			if !hasText(input.VendorID) || !hasText(input.Name) {
+		case entity.ResourcePolicy:
+			if !hasText(input.VendorID) || !hasText(input.Name) || !hasText(input.FileURL) {
 				return ErrInvalidOperationalData
 			}
-			if resource == entity.ResourcePolicy && !hasText(input.FileURL) {
+		case entity.ResourcePipeline:
+			if !hasText(input.VendorID) || !hasText(input.SiteID) || !hasText(input.Name) {
 				return ErrInvalidOperationalData
 			}
 		case entity.ResourceItem:
@@ -213,7 +215,7 @@ func operationalFieldsAllowed(resource entity.OperationalResource, input entity.
 		case entity.ResourcePolicy:
 			allowed = operationalFieldSet("vendor_id", "name", "file_url")
 		case entity.ResourcePipeline:
-			allowed = operationalFieldSet("vendor_id", "name", "description")
+			allowed = operationalFieldSet("vendor_id", "site_id", "name", "description")
 		case entity.ResourceItem:
 			allowed = operationalFieldSet("name", "description")
 		case entity.ResourcePipelineItem:
@@ -246,7 +248,7 @@ func operationalFieldSet(names ...string) map[string]bool {
 
 func hasOnlyOperationalFields(input entity.OperationalInput, allowed map[string]bool) bool {
 	fields := map[string]bool{
-		"vendor_id": input.VendorID != nil, "name": input.Name != nil, "description": input.Description != nil,
+		"vendor_id": input.VendorID != nil, "site_id": input.SiteID != nil, "name": input.Name != nil, "description": input.Description != nil,
 		"item": input.Item != nil, "jenis_item": input.ItemType != nil, "qty": input.Quantity != nil,
 		"img": input.Image != nil, "status_condition": input.Condition != nil, "file_url": input.FileURL != nil,
 		"pipeline_id": input.PipelineID != nil, "item_id": input.ItemID != nil,
@@ -265,7 +267,7 @@ func hasText(value *string) bool {
 }
 
 func inputIsEmpty(input entity.OperationalInput) bool {
-	return input.VendorID == nil && input.Name == nil && input.Description == nil &&
+	return input.VendorID == nil && input.SiteID == nil && input.Name == nil && input.Description == nil &&
 		input.Item == nil && input.ItemType == nil && input.Quantity == nil && input.Image == nil &&
 		input.Condition == nil && input.FileURL == nil && input.PipelineID == nil &&
 		input.ItemID == nil && input.SortOrder == nil && input.Status == nil

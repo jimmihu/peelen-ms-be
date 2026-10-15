@@ -27,7 +27,7 @@ type WorkflowRepository interface {
 	ListPipelineReports(context.Context, entity.OperationalAccess, entity.ReportFilter) ([]entity.PipelineReport, int, error)
 	GetPipelineReport(context.Context, entity.OperationalAccess, string) (*entity.PipelineReport, error)
 	CreatePipelineReport(context.Context, entity.OperationalAccess, entity.PipelineReportInput) (*entity.PipelineReport, error)
-	UpdatePipelineReport(context.Context, entity.OperationalAccess, string, entity.PipelineReportInput, bool) (*entity.PipelineReport, error)
+	UpdatePipelineReport(context.Context, entity.OperationalAccess, string, entity.PipelineReportInput) (*entity.PipelineReport, error)
 	ListInventoryReports(context.Context, entity.OperationalAccess, entity.ReportFilter) ([]entity.InventoryReport, int, error)
 	GetInventoryReport(context.Context, entity.OperationalAccess, string) (*entity.InventoryReport, error)
 	CreateInventoryReport(context.Context, entity.OperationalAccess, entity.InventoryReportInput) (*entity.InventoryReport, error)
