@@ -238,8 +238,11 @@ of upload, which rejects old photos from the gallery. EXIF times without an
 offset are read in `APP_TIMEZONE` (default `Asia/Jakarta`), which is also used as
 the database session time zone.
 
-`POST /inventory-report` accepts `vendor_id`, `report_type` (`REQUEST` or
-`DAMAGED`), `description`, and optional `inventory_id` and `evidence` object key.
+`POST /inventory-report` accepts JSON or `multipart/form-data` with `vendor_id`,
+`report_type` (`REQUEST` or `DAMAGED`), `description`, optional `inventory_id`,
+and optional evidence. For multipart requests, upload evidence using the `file`
+field (JPEG, PNG, WebP, or PDF; up to 10 MiB); the file is stored in object
+storage. JSON clients may continue to send an existing `evidence` object key.
 `DAMAGED` requires an inventory belonging to that vendor. Managers can review
 reports using `PATCH /inventory-report/{id}/review` with `status` (`IN_REVIEW`,
 `APPROVED`, `REJECTED`, or `RESOLVED`) and optional `review_reason`.

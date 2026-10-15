@@ -281,13 +281,14 @@ func (h *WorkflowHandler) GetInventoryReport(c *gin.Context) {
 }
 
 func (h *WorkflowHandler) CreateInventoryReport(c *gin.Context) {
-	var input entity.InventoryReportInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+	input, uploaded, ok := h.bindInventoryReportInput(c)
+	defer removeMultipartForm(c)
+	if !ok {
 		return
 	}
 	result, err := h.usecase.CreateInventoryReport(c.Request.Context(), currentUser(c), input)
 	if err != nil {
+		h.removeUploadedEvidence(uploaded)
 		handleWorkflowError(c, err)
 		return
 	}

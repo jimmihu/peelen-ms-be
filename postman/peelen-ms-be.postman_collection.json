@@ -2355,7 +2355,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"inventory_id\": null,\n  \"report_type\": \"DAMAGE\",\n  \"evidence\": null,\n  \"description\": \"Sample inventory report description\",\n  \"status\": \"PENDING\"\n}",
+              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"inventory_id\": null,\n  \"report_type\": \"REQUEST\",\n  \"evidence\": null,\n  \"description\": \"Request inventory replenishment\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2369,6 +2369,72 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('Inventory report created', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('inventory_report_id', pm.response.json().data.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Inventory Report with Evidence File",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/inventory-reports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory-reports"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "report_type",
+                  "value": "REQUEST",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Inventory evidence from worker",
+                  "type": "text"
+                },
+                {
+                  "key": "inventory_id",
+                  "value": "{{inventory_id}}",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "Optional evidence file: JPEG, PNG, WebP, or PDF, max 10 MiB."
+                }
+              ]
+            },
+            "description": "Postman sets the multipart Content-Type boundary automatically. For DAMAGED reports, enable inventory_id and provide an inventory belonging to the selected vendor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Inventory report created', function () { pm.response.to.have.status(201); });",
                   "if (pm.response.code === 201) {",
                   "  pm.collectionVariables.set('inventory_report_id', pm.response.json().data.id);",
                   "}"
