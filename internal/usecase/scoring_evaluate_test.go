@@ -95,3 +95,34 @@ func TestListResultsVisibility(t *testing.T) {
 func (f *evalRepoFake) ListResults(_ context.Context, rf entity.ResultFilter) ([]entity.ScoreResult, int, error) {
 	return nil, 0, nil
 }
+
+type ruleFilterSpy struct {
+	evalRepoFake
+	filter entity.RuleFilter
+}
+
+func (f *ruleFilterSpy) ListRules(_ context.Context, rf entity.RuleFilter) ([]entity.ScoreRule, error) {
+	f.filter = rf
+	return nil, nil
+}
+
+func TestLiveResultsLoadsOnlyVisibleVendorsRules(t *testing.T) {
+	cases := []struct {
+		name  string
+		actor *entity.User
+		scope string
+		want  []string
+	}{
+		{"worker", &entity.User{ID: "w", Roles: []string{"WORKER"}, Vendors: []string{testVendor}}, entity.ScopeWorker, []string{testVendor}},
+		{"site admin", &entity.User{ID: "a", Roles: []string{"ADMIN"}, Sites: []string{testSite}}, entity.ScopeSite, []string{testVendor}},
+	}
+	for _, c := range cases {
+		repo := &ruleFilterSpy{}
+		if _, err := NewScoringUsecase(repo).LiveResults(context.Background(), c.actor, "SLA", c.scope, ""); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if repo.filter.AllVendors || len(repo.filter.VendorIDs) != 1 || repo.filter.VendorIDs[0] != c.want[0] {
+			t.Errorf("%s: rule filter = %+v, want only vendors %v", c.name, repo.filter, c.want)
+		}
+	}
+}

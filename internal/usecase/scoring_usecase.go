@@ -360,8 +360,20 @@ func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User
 	if err != nil {
 		return nil, err
 	}
+	// Load only rules of vendors the caller can see, so a narrow caller does not
+	// trigger scoring of every vendor.
+	ruleVendors := vis.VendorIDs
+	switch {
+	case hasRole(actor, "SUPER_ADMIN"):
+	case hasRole(actor, "ADMIN"):
+		if ruleVendors, err = u.repository.VendorIDsForSites(ctx, actor.Sites); err != nil {
+			return nil, err
+		}
+	case hasRole(actor, "ADMIN_WORKER"), hasRole(actor, "WORKER"):
+		ruleVendors = actor.Vendors
+	}
 	rules, err := u.repository.ListRules(ctx, entity.RuleFilter{Kind: kind, VendorID: vendorID, ActiveOnly: true,
-		AllVendors: vis.AllVendors || len(vis.SiteIDs) > 0, VendorIDs: vis.VendorIDs})
+		AllVendors: hasRole(actor, "SUPER_ADMIN"), VendorIDs: ruleVendors})
 	if err != nil {
 		return nil, err
 	}
