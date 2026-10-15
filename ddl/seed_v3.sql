@@ -21,6 +21,7 @@ TRUNCATE TABLE
     score_rule_items,
     score_rules,
     task_day_facts,
+    scoring_job_state,
     inventory_reports,
     pipeline_report_history,
     pipeline_report_details,

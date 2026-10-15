@@ -495,6 +495,13 @@ CREATE INDEX IF NOT EXISTS idx_task_day_facts_vendor_date ON task_day_facts(vend
 CREATE INDEX IF NOT EXISTS idx_task_day_facts_site_date ON task_day_facts(site_id, report_date);
 CREATE INDEX IF NOT EXISTS idx_task_day_facts_worker_date ON task_day_facts(worker_id, report_date);
 
+-- How far task_day_facts has been finalized. The single boundary between stored
+-- and live facts, and the last date a period may be frozen through.
+CREATE TABLE IF NOT EXISTS scoring_job_state (
+    id            smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    facts_through date
+);
+
 -- Frozen results per closed period.
 CREATE TABLE IF NOT EXISTS score_period_results (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

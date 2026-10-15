@@ -155,6 +155,20 @@ func TestFactsEveningShiftAndMissingReport(t *testing.T) {
 		t.Errorf("day without report: %+v, want reported=false", rows[2])
 	}
 
+	// The stored/live boundary is what finalization actually stored, not a fresh
+	// clock read, so a period can never be frozen with a day missing.
+	through, err := repo.LastFinalDate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored time.Time
+	if err := db.QueryRow(`SELECT facts_through FROM scoring_job_state`).Scan(&stored); err != nil {
+		t.Fatalf("facts_through not recorded: %v", err)
+	}
+	if !through.Equal(stored) {
+		t.Fatalf("LastFinalDate = %s, want stored facts_through %s", through, stored)
+	}
+
 	// Idempotent: a second run inserts nothing.
 	if n, err := repo.FinalizeFacts(ctx); err != nil || n != 0 {
 		t.Fatalf("second finalize inserted %d (err %v), want 0", n, err)

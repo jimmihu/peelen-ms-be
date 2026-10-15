@@ -63,19 +63,30 @@ func taskDayFactsSQL(fromParam, toParam int) string {
 // date + 1 day + the latest shift start must be in the past.
 const lastFinalDateSQL = `(localtimestamp - interval '1 day' - (SELECT coalesce(max(start_time), '00:00')::interval FROM shifts))::date`
 
+// factsThroughSQL is the last date whose facts are stored; before any
+// finalization it is a date earlier than all data.
+const factsThroughSQL = `coalesce((SELECT facts_through FROM scoring_job_state), '0001-01-01'::date)`
+
+// LastFinalDate returns the last date whose facts are stored. Periods are
+// frozen only through this date, and live views compute facts after it.
 func (r *ScoringRepositoryImpl) LastFinalDate(ctx context.Context) (time.Time, error) {
 	var day time.Time
-	err := r.db.QueryRowContext(ctx, `SELECT `+lastFinalDateSQL).Scan(&day)
+	err := r.db.QueryRowContext(ctx, `SELECT `+factsThroughSQL).Scan(&day)
 	return day, err
 }
 
 // FinalizeFacts stores facts for every final day not yet stored, starting at
 // the earliest assignment (or the day after the latest stored fact).
 func (r *ScoringRepositoryImpl) FinalizeFacts(ctx context.Context) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	var from sql.NullTime
 	var to time.Time
-	if err := r.db.QueryRowContext(ctx, `
-		SELECT coalesce((SELECT max(report_date) + 1 FROM task_day_facts),
+	if err := tx.QueryRowContext(ctx, `
+		SELECT coalesce((SELECT facts_through + 1 FROM scoring_job_state),
 			(SELECT min(created_at)::date FROM pipeline_item_assignments)), `+lastFinalDateSQL,
 	).Scan(&from, &to); err != nil {
 		return 0, err
@@ -83,7 +94,7 @@ func (r *ScoringRepositoryImpl) FinalizeFacts(ctx context.Context) (int64, error
 	if !from.Valid || from.Time.After(to) {
 		return 0, nil
 	}
-	result, err := r.db.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO task_day_facts (assignment_id, report_date, vendor_id, site_id, pipeline_id, worker_id,
 			reported, completed, on_time, late_minutes, late_upload, evidence_complete, k3_finding, k3_finding_with_notes)
 		`+taskDayFactsSQL(1, 2)+`
@@ -92,7 +103,18 @@ func (r *ScoringRepositoryImpl) FinalizeFacts(ctx context.Context) (int64, error
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	// Record the boundary in the same transaction as the facts it covers.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO scoring_job_state (id, facts_through) VALUES (1, $1::date)
+		ON CONFLICT (id) DO UPDATE SET facts_through = EXCLUDED.facts_through
+	`, to); err != nil {
+		return 0, err
+	}
+	return inserted, tx.Commit()
 }
 
 // AggregateFacts sums facts per scope group. Stored facts cover dates up to
@@ -114,7 +136,7 @@ func (r *ScoringRepositoryImpl) AggregateFacts(ctx context.Context, q entity.Fac
 	}
 	args := []any{q.From, q.To, q.VendorID, pq.Array(q.SiteIDs), pq.Array(q.ExcludeSiteIDs)}
 	query := `
-		WITH last_final AS (SELECT ` + lastFinalDateSQL + ` AS day),
+		WITH last_final AS (SELECT ` + factsThroughSQL + ` AS day),
 		facts AS (
 			SELECT assignment_id, report_date, vendor_id, site_id, worker_id, reported, completed, on_time,
 				late_minutes, late_upload, evidence_complete, k3_finding, k3_finding_with_notes
