@@ -125,6 +125,19 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}, ""); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("admin creating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
 	}
+	foreignPipeline, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &foreignSiteID, Name: stringPtr("Foreign area"),
+	}, "")
+	if err != nil {
+		t.Fatalf("super admin creating a pipeline at the second site: %v", err)
+	}
+	if _, err := repo.UpdateOperational(ctx, adminAccess, entity.ResourcePipeline, foreignPipeline.ID,
+		entity.OperationalInput{Name: stringPtr("Renamed by another site's admin")}, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("admin updating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
+	}
+	if err := repo.DeleteOperational(ctx, adminAccess, entity.ResourcePipeline, foreignPipeline.ID, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("admin deactivating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
+	}
 	outsideScopeVendorID := "30000000-0000-4000-8000-000000000001"
 	if _, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
 		VendorID: &outsideScopeVendorID, SiteID: &siteID, Name: stringPtr("Out of scope"),

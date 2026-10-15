@@ -191,7 +191,7 @@ func (r *OperationalRepositoryImpl) CreateOperational(ctx context.Context, acces
 			INSERT INTO pipeline_items (pipeline_id, item_id, sort_order, created_by)
 			SELECT p.id, $2, COALESCE($3, 0), $4
 			FROM pipelines p
-			WHERE p.id = $1 AND `+scopePredicate("p.vendor_id", 5)+`
+			WHERE p.id = $1 AND `+scopePredicate("p.vendor_id", 5)+` AND `+pipelineWriteScope("p", 5)+`
 			RETURNING id::text
 		`, *input.PipelineID, *input.ItemID, input.SortOrder, access.UserID,
 			hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs)).Scan(&id)
@@ -250,7 +250,7 @@ func (r *OperationalRepositoryImpl) UpdateOperational(ctx context.Context, acces
 			UPDATE pipelines t SET vendor_id = COALESCE($1, t.vendor_id),
 				name = COALESCE($2, t.name), description = COALESCE($3, t.description),
 				status = COALESCE($4, t.status)
-			WHERE t.id = $5 AND `+scopePredicate("t.vendor_id", 6), input.VendorID, input.Name, input.Description, input.Status, id,
+			WHERE t.id = $5 AND `+scopePredicate("t.vendor_id", 6)+` AND `+pipelineWriteScope("t", 6), input.VendorID, input.Name, input.Description, input.Status, id,
 			hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
 	case entity.ResourceItem:
 		result, err = tx.ExecContext(ctx, `
@@ -264,7 +264,7 @@ func (r *OperationalRepositoryImpl) UpdateOperational(ctx context.Context, acces
 				item_id = COALESCE($2, t.item_id), sort_order = COALESCE($3, t.sort_order),
 				status = COALESCE($4, t.status)
 			FROM pipelines p
-			WHERE t.id = $5 AND p.id = t.pipeline_id AND `+scopePredicate("p.vendor_id", 6),
+			WHERE t.id = $5 AND p.id = t.pipeline_id AND `+scopePredicate("p.vendor_id", 6)+` AND `+pipelineWriteScope("p", 6),
 			input.PipelineID, input.ItemID, input.SortOrder, input.Status, id,
 			hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
 	default:
@@ -310,11 +310,11 @@ func (r *OperationalRepositoryImpl) DeleteOperational(ctx context.Context, acces
 	case entity.ResourcePolicy:
 		result, err = tx.ExecContext(ctx, `UPDATE policies t SET status = 'INACTIVE' WHERE t.id = $1 AND `+scopePredicate("t.vendor_id", 2), id, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
 	case entity.ResourcePipeline:
-		result, err = tx.ExecContext(ctx, `UPDATE pipelines t SET status = 'INACTIVE' WHERE t.id = $1 AND `+scopePredicate("t.vendor_id", 2), id, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
+		result, err = tx.ExecContext(ctx, `UPDATE pipelines t SET status = 'INACTIVE' WHERE t.id = $1 AND `+scopePredicate("t.vendor_id", 2)+` AND `+pipelineWriteScope("t", 2), id, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
 	case entity.ResourceItem:
 		result, err = tx.ExecContext(ctx, `UPDATE items t SET status = 'INACTIVE' WHERE t.id = $1 AND `+itemScopePredicate(2), id, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs), access.UserID, hasOperationalRole(access.Roles, "WORKER"))
 	case entity.ResourcePipelineItem:
-		result, err = tx.ExecContext(ctx, `UPDATE pipeline_items t SET status = 'INACTIVE' FROM pipelines p WHERE t.id = $1 AND p.id = t.pipeline_id AND `+scopePredicate("p.vendor_id", 2), id, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
+		result, err = tx.ExecContext(ctx, `UPDATE pipeline_items t SET status = 'INACTIVE' FROM pipelines p WHERE t.id = $1 AND p.id = t.pipeline_id AND `+scopePredicate("p.vendor_id", 2)+` AND `+pipelineWriteScope("p", 2), id, hasOperationalRole(access.Roles, "SUPER_ADMIN"), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
 	default:
 		return entity.ErrInvalidOperationalResource
 	}
@@ -385,6 +385,14 @@ func scopePredicate(vendorExpr string, start int) string {
 		SELECT 1 FROM vendor_sites vs
 		WHERE vs.vendor_id = %s AND vs.site_id = ANY($%d::uuid[])
 	))`, start, vendorExpr, start+1, vendorExpr, start+2)
+}
+
+// pipelineWriteScope narrows writes on a pipeline (or its items) to the
+// caller's sites for site-scoped admins; vendor-scoped and super admins pass.
+// It expects the same three parameters as scopePredicate starting at start.
+func pipelineWriteScope(alias string, start int) string {
+	return fmt.Sprintf(`($%d::boolean OR %[2]s.vendor_id = ANY($%d::uuid[]) OR %[2]s.site_id = ANY($%d::uuid[]))`,
+		start, alias, start+1, start+2)
 }
 
 func itemScopePredicate(start int) string {
