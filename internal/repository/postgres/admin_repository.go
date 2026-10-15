@@ -396,22 +396,31 @@ func (r *AdminRepositoryImpl) loadAuthorization(ctx context.Context, user *entit
 	}
 	rows.Close()
 
-	scopeRows, err := r.db.QueryContext(ctx, `SELECT site_id, vendor_id FROM user_scopes WHERE user_id = $1`, user.ID)
+	scopeRows, err := r.db.QueryContext(ctx, `
+		SELECT us.site_id::text, s.code, s.name, us.vendor_id::text, v.code, v.name
+		FROM user_scopes us
+		LEFT JOIN sites s ON s.id = us.site_id
+		LEFT JOIN vendors v ON v.id = us.vendor_id
+		WHERE us.user_id = $1
+		ORDER BY s.code NULLS LAST, v.code NULLS LAST
+	`, user.ID)
 	if err != nil {
 		return err
 	}
 	defer scopeRows.Close()
-	user.Sites, user.Vendors = []string{}, []string{}
+	user.Sites, user.Vendors, user.Scopes = []string{}, []string{}, []entity.UserScope{}
 	for scopeRows.Next() {
-		var siteID, vendorID sql.NullString
-		if err := scopeRows.Scan(&siteID, &vendorID); err != nil {
+		var siteID, siteCode, siteName, vendorID, vendorCode, vendorName sql.NullString
+		if err := scopeRows.Scan(&siteID, &siteCode, &siteName, &vendorID, &vendorCode, &vendorName); err != nil {
 			return err
 		}
 		if siteID.Valid {
 			user.Sites = append(user.Sites, siteID.String)
+			user.Scopes = append(user.Scopes, entity.UserScope{Type: "SITE", ID: siteID.String, Code: siteCode.String, Name: siteName.String})
 		}
 		if vendorID.Valid {
 			user.Vendors = append(user.Vendors, vendorID.String)
+			user.Scopes = append(user.Scopes, entity.UserScope{Type: "VENDOR", ID: vendorID.String, Code: vendorCode.String, Name: vendorName.String})
 		}
 	}
 	return scopeRows.Err()
