@@ -113,6 +113,19 @@ Tren per vendor (dibuat sengaja agar skor berbeda): VND-001 stabil baik, VND-002
 
 Login dulu di `POST /api/v1/auth/login`, lalu pakai `access_token`.
 
+ID yang dipakai di skenario (`<id ...>`) bisa diambil dengan:
+
+```sql
+SELECT 'vendor' AS jenis, code AS kode, name AS nama, id::text FROM vendors
+UNION ALL
+SELECT 'site', code, name, id::text FROM sites
+UNION ALL
+SELECT 'user', u.username, coalesce(u.full_name, u.username), u.id::text
+FROM users u
+WHERE u.username IN ('superadmin', 'admin.paiton', 'admin.regional', 'aw.mitra', 'w.vnd001.01', 'w.vnd001.06')
+ORDER BY 1, 2;
+```
+
 ### Super Admin (`superadmin`)
 
 | # | Langkah | Hasil yang diharapkan |
@@ -189,7 +202,7 @@ LEFT JOIN users u ON u.id = r.worker_id
 ORDER BY r.kind, r.scope_type, v.code, s.code NULLS FIRST, u.username NULLS FIRST, r.period_start;
 ```
 
-Jumlah hasil yang diharapkan per cakupan:
+Jumlah hasil per cakupan dan periode (untuk `kind = SLA`, setiap `scope_type` harus punya baris `WEEK`, `MONTH`, dan `QUARTER`):
 
 ```sql
 SELECT kind, scope_type, period_type, count(*)
