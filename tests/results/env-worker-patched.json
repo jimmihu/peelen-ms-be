@@ -1,0 +1,1 @@
+{"id": "env-worker", "name": "WORKER", "values": [{"key": "base_url", "value": "http://103.150.226.7:8082", "type": "default", "enabled": true}, {"key": "username", "value": "w.vnd001.01", "type": "default", "enabled": true}, {"key": "password", "value": "Password123!", "type": "default", "enabled": true}], "_postman_variable_scope": "environment"}

@@ -1,0 +1,51 @@
+Test ID,Endpoint,Method,Role,Scenario,HTTP Status,Error Code,Expected by PRD,PRD Compliant,Notes
+1,/api/v1/policies,GET,SUPER_ADMIN,List all policies (no filter),200,OK,200 OK,YES,Returns all policies across all vendors
+2,/api/v1/policies,GET,ADMIN,List policies (site-scoped),200,OK,200 OK,YES,Returns policies for vendors in admin's site (fa0233b3)
+3,/api/v1/policies,GET,ADMIN_WORKER,List policies (vendor-scoped),200,OK,200 OK,YES,Returns only policies for own vendor (5e6f44f6)
+4,/api/v1/policies,GET,WORKER,List policies (vendor-scoped),200,OK,200 OK,YES,Returns only policies for own vendor (5e6f44f6)
+5,/api/v1/policies,GET,NO_AUTH,List without token,401,AUTH_UNAUTHORIZED,401,YES,Correctly blocks unauthenticated requests
+6,/api/v1/policies/{id},GET,SUPER_ADMIN,Get existing in-scope policy,200,OK,200 OK,YES,Returns full policy record
+7,/api/v1/policies/{id},GET,ADMIN,Get in-scope policy,200,OK,200 OK,YES,Policy belongs to vendor under admin's site
+8,/api/v1/policies/{id},GET,ADMIN_WORKER,Get own-vendor policy,200,OK,200 OK,YES,Policy belongs to own vendor
+9,/api/v1/policies/{id},GET,WORKER,Get own-vendor policy,200,OK,200 OK,YES,Worker can read policies in their vendor
+10,/api/v1/policies/{id},GET,SUPER_ADMIN,Get non-existent policy (fake UUID),404,RESOURCE_NOT_FOUND,404,YES,Returns 404 for unknown ID
+11,/api/v1/policies/{id},GET,ADMIN_WORKER,Get non-existent policy (fake UUID),404,RESOURCE_NOT_FOUND,404,YES,Returns 404 for unknown ID
+12,/api/v1/policies/{id}/file,GET,SUPER_ADMIN,Get signed URL for active policy,200,OK,200 OK,YES,Returns signed URL + expires_in=600
+13,/api/v1/policies/{id}/file,GET,ADMIN,Get signed URL for in-scope policy,200,OK,200 OK,YES,Policy is in admin's site scope
+14,/api/v1/policies/{id}/file,GET,ADMIN_WORKER,Get signed URL for own-vendor policy,200,OK,200 OK,YES,Returns signed URL successfully
+15,/api/v1/policies/{id}/file,GET,WORKER,Get signed URL for own-vendor policy,200,OK,200 OK,YES,Worker can access PDF of policies in their vendor
+16,/api/v1/policies/{id}/file,GET,SUPER_ADMIN,Get file for INACTIVE policy,404,RESOURCE_NOT_FOUND,404,YES,Handler explicitly blocks file access on INACTIVE policies
+17,/api/v1/policies/{id}/file,GET,WORKER,Get file for out-of-scope policy,404,RESOURCE_NOT_FOUND,404,YES,Scope isolation returns 404 (not 403) to avoid info leak
+18,/api/v1/policies/{id}/file,GET,NO_AUTH,Get file without token,401,AUTH_UNAUTHORIZED,401,YES,Blocked before reaching handler
+19,/api/v1/policies,POST,SUPER_ADMIN,Create policy on in-scope vendor (multipart PDF),201,OK,201 Created,YES,File uploaded to MinIO; object key stored in DB
+20,/api/v1/policies,POST,ADMIN,Create policy on in-scope vendor (multipart PDF),201,OK,201 Created,YES,Vendor is under admin's assigned site
+21,/api/v1/policies,POST,ADMIN,Create policy on out-of-scope vendor,404,RESOURCE_NOT_FOUND,404,YES,Vendor not in admin's site; scope enforced at SQL level
+22,/api/v1/policies,POST,ADMIN_WORKER,Create policy on own vendor (multipart PDF),201,OK,201 Created,YES,AW can manage their own vendor's SOPs
+23,/api/v1/policies,POST,ADMIN_WORKER,Create policy on out-of-scope vendor,404,RESOURCE_NOT_FOUND,404,YES,Vendor not in AW's scope; correctly blocked
+24,/api/v1/policies,POST,WORKER,Create policy (should be forbidden),403,AUTH_FORBIDDEN,403,YES,WORKER has no write access to policies
+25,/api/v1/policies,POST,NO_AUTH,Create without token,401,AUTH_UNAUTHORIZED,401,YES,Correctly blocks unauthenticated requests
+26,/api/v1/policies,POST,SUPER_ADMIN,Create without file field,400,INVALID_OPERATIONAL_DATA,400,YES,File is required; handler validates before usecase
+27,/api/v1/policies,POST,SUPER_ADMIN,Create without name field,400,INVALID_OPERATIONAL_DATA,400,YES,Name is required; usecase validation rejects it
+28,/api/v1/policies,POST,SUPER_ADMIN,Create without vendor_id field,400,INVALID_OPERATIONAL_DATA,400,YES,vendor_id is required; usecase validation rejects it
+29,/api/v1/policies,POST,SUPER_ADMIN,Upload non-PDF file (fake content),400,INVALID_OPERATIONAL_DATA,400,YES,Handler validates PDF magic bytes (%PDF-) before upload
+30,/api/v1/policies/{id},PATCH,SUPER_ADMIN,Update name only,200,OK,200 OK,YES,COALESCE partial update; only name changed
+31,/api/v1/policies/{id},PATCH,ADMIN,Update name only (in-scope policy),200,OK,200 OK,YES,Policy is in admin's site scope
+32,/api/v1/policies/{id},PATCH,ADMIN_WORKER,Update name only (own vendor policy),200,OK,200 OK,YES,AW can update own vendor's SOPs
+33,/api/v1/policies/{id},PATCH,WORKER,Update (should be forbidden),403,AUTH_FORBIDDEN,403,YES,WORKER has no write access
+34,/api/v1/policies/{id},PATCH,ADMIN_WORKER,Update out-of-scope policy,404,RESOURCE_NOT_FOUND,404,YES,SQL scope predicate hides/blocks out-of-scope records
+35,/api/v1/policies/{id},PATCH,ADMIN,Update out-of-scope policy,404,RESOURCE_NOT_FOUND,404,YES,SQL scope predicate hides/blocks out-of-scope records
+36,/api/v1/policies/{id},PATCH,SUPER_ADMIN,Update with new PDF file (multipart),200,OK,200 OK,YES,Old file deleted from MinIO; new key stored in DB
+37,/api/v1/policies/{id},PATCH,ADMIN_WORKER,Update with new PDF file (multipart),200,OK,200 OK,YES,File replacement works for own-vendor policy
+38,/api/v1/policies/{id},PATCH,WORKER,Update with new file (should be forbidden),403,AUTH_FORBIDDEN,403,YES,WORKER blocked before file processing
+39,/api/v1/policies/{id},PATCH,SUPER_ADMIN,Update status to INACTIVE,200,OK,200 OK,YES,Status field update works independently
+40,/api/v1/policies/{id},PATCH,SUPER_ADMIN,Update with invalid status value,400,INVALID_OPERATIONAL_DATA,400,YES,Usecase rejects status values outside ACTIVE/INACTIVE
+41,/api/v1/policies/{id},PATCH,SUPER_ADMIN,Update with no valid fields (empty form),400,INVALID_OPERATIONAL_DATA,400,YES,Handler requires at least one valid field
+42,/api/v1/policies/{id},PATCH,NO_AUTH,Update without token,401,AUTH_UNAUTHORIZED,401,YES,Correctly blocks unauthenticated requests
+43,/api/v1/policies/{id},DELETE,SUPER_ADMIN,Delete own-scope policy,204,OK,204,YES,Soft-delete: sets status=INACTIVE; row remains
+44,/api/v1/policies/{id},DELETE,ADMIN,Delete in-scope policy,204,OK,204,YES,Policy under admin's site; deleted successfully
+45,/api/v1/policies/{id},DELETE,ADMIN_WORKER,Delete own-vendor policy,204,OK,204,YES,AW can deactivate own vendor's SOPs
+46,/api/v1/policies/{id},DELETE,ADMIN_WORKER,Delete out-of-scope policy,404,RESOURCE_NOT_FOUND,404,YES,Scope predicate prevents cross-vendor deletion
+47,/api/v1/policies/{id},DELETE,WORKER,Delete (should be forbidden),403,AUTH_FORBIDDEN,403,YES,WORKER has no delete access
+48,/api/v1/policies/{id},DELETE,SUPER_ADMIN,Delete already-inactive policy,204,OK,204,YES,Idempotent soft-delete; no error on re-delete
+49,/api/v1/policies/{id},DELETE,NO_AUTH,Delete without token,401,AUTH_UNAUTHORIZED,401,YES,Correctly blocks unauthenticated requests
+50,/api/v1/policies/{id},GET,SUPER_ADMIN,Verify soft-delete (GET after DELETE),200,OK,N/A,YES,Record still exists in DB with status=INACTIVE (confirmed)
