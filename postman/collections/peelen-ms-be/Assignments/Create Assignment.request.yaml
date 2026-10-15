@@ -1,5 +1,5 @@
 $kind: http-request
-description: "user_id harus WORKER aktif dengan scope vendor pemilik pipeline. Penugasan nonaktif dengan kombinasi yang sama akan diaktifkan kembali; yang masih aktif mengembalikan 409."
+description: "user_id harus WORKER aktif dengan scope vendor pemilik pipeline. Shift dipilih saat worker membuat report, bukan di penugasan. Penugasan nonaktif dengan kombinasi yang sama akan diaktifkan kembali; yang masih aktif mengembalikan 409."
 url: "{{base_url}}/api/v1/assignments"
 method: POST
 headers:
@@ -9,8 +9,7 @@ body:
   content: |-
     {
       "pipeline_item_id": "{{pipeline_item_id}}",
-      "user_id": "{{user_id}}",
-      "shift": "pagi"
+      "user_id": "{{user_id}}"
     }
 scripts:
   - type: afterResponse

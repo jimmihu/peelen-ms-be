@@ -1,0 +1,11 @@
+$kind: http-request
+description: "Semua versi aturan SLA untuk satu vendor (+ site)."
+url: "{{base_url}}/api/v1/sla-rules/history"
+method: GET
+params:
+  - key: vendor_id
+    value: "{{vendor_id}}"
+  - key: site_id
+    value: "{{site_id}}"
+    disabled: true
+order: 4000

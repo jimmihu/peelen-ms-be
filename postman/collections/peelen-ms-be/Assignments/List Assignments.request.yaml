@@ -1,5 +1,5 @@
 $kind: http-request
-description: "Filter opsional: vendor_id, site_id, pipeline_id, pipeline_item_id, user_id, shift (pagi/siang/malam), is_active (true/false), page, limit."
+description: "Filter opsional: vendor_id, site_id, pipeline_id, pipeline_item_id, user_id, is_active (true/false), page, limit."
 url: "{{base_url}}/api/v1/assignments?is_active=true&page=1&limit=20"
 method: GET
 order: 1000

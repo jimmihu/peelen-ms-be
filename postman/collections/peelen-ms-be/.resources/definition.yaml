@@ -11,6 +11,11 @@ variables:
   vendor_id: ""
   pipeline_item_id: ""
   assignment_id: ""
+  pipeline_id: ""
+  pipeline_report_id: ""
+  shift: ""
+  sla_rule_id: ""
+  maturity_rule_id: ""
 scripts:
   - type: http:beforeRequest
     code: |-

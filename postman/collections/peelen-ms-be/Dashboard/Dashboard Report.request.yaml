@@ -1,5 +1,5 @@
 $kind: http-request
-description: "Get dashboard report. Filter options: date, site_id, vendor_id"
+description: "Get dashboard report. Filter options: date, site_id, vendor_id. pipeline_reports berisi total, in_progress, completed, late_upload."
 url: "{{base_url}}/api/v1/dashboard/report"
 method: GET
 params:

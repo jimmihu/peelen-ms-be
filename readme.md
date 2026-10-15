@@ -103,9 +103,10 @@ as HTTPS. The app rejects plain HTTP in release mode.
 
 All endpoints use the `/api/v1` prefix.
 
-Import [ddl/peelen-ms-be.postman_collection.json](ddl/peelen-ms-be.postman_collection.json)
-into Postman to try the API. Set the collection variables for the base URL,
-credentials, and valid vendor/site IDs first.
+The Postman collection lives in [postman/collections/peelen-ms-be](postman/collections/peelen-ms-be)
+(Postman's Git-synced YAML format, one file per request); open the repository folder as a
+Postman workspace to use it, with an environment from `postman/*.postman_environment.json`.
+Run Auth > Login first, then set valid vendor/site IDs in the collection variables.
 
 | Method | Path | Access |
 |---|---|---|

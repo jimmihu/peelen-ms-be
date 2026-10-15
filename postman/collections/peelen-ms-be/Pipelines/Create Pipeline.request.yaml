@@ -1,4 +1,5 @@
 $kind: http-request
+description: "site_id wajib: salah satu site vendor, dan dalam scope pemanggil untuk ADMIN."
 url: "{{base_url}}/api/v1/pipelines"
 method: POST
 headers:
@@ -8,6 +9,7 @@ body:
   content: |-
     {
       "vendor_id": "{{vendor_id}}",
+      "site_id": "{{site_id}}",
       "name": "Sample Pipeline",
       "description": "Sample pipeline description"
     }

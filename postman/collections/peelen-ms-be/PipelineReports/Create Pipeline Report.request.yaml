@@ -1,4 +1,5 @@
 $kind: http-request
+description: "Status IN_PROGRESS (default) atau COMPLETED. COMPLETED wajib evidence_after dan closed_date. status_revisi diisi server: SUBMITTED bila dikirim/diubah setelah shift selesai. Upload susulan terbuka sampai shift yang sama dimulai hari berikutnya (setelah itu 409 REPORT_UPLOAD_CLOSED). Untuk upload foto langsung pakai request (Upload Photos)."
 url: "{{base_url}}/api/v1/pipeline-reports"
 method: POST
 headers:
@@ -8,12 +9,11 @@ body:
   content: |-
     {
       "pipeline_item_id": "{{pipeline_item_id}}",
-      "shift": "{{shift}}",
-      "report_date": "2024-01-15",
-      "status": "OK",
-      "status_revisi": "",
+      "shift": "DAY",
+      "report_date": "2026-10-15",
+      "status": "IN_PROGRESS",
       "evidence_before": null,
-      "evidence_after": null,
+      "open_date": "2026-10-15T09:00:00+07:00",
       "notes": "Sample report notes"
     }
 scripts:

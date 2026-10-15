@@ -1,0 +1,70 @@
+$kind: http-request
+description: "Membuat versi baru. levels opsional (default sistem dipakai bila kosong); syarat tiap level harus naik bertahap."
+url: "{{base_url}}/api/v1/maturity-rules"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "vendor_id": "{{vendor_id}}",
+      "site_id": null,
+      "period_type": "MONTH",
+      "dimensions": [
+        {
+          "code": "COMPLETION_RATE",
+          "weight": 30
+        },
+        {
+          "code": "ON_TIME_RATE",
+          "weight": 30
+        },
+        {
+          "code": "EVIDENCE_COMPLETE_RATE",
+          "weight": 15
+        },
+        {
+          "code": "LATE_UPLOAD_RATE",
+          "weight": 10
+        },
+        {
+          "code": "CONSISTENCY",
+          "weight": 15
+        }
+      ],
+      "levels": [
+        {
+          "level": 2,
+          "min_score": 60,
+          "min_dimension": 50,
+          "consecutive_periods": 1
+        },
+        {
+          "level": 3,
+          "min_score": 75,
+          "min_dimension": 65,
+          "consecutive_periods": 2
+        },
+        {
+          "level": 4,
+          "min_score": 85,
+          "min_dimension": 75,
+          "consecutive_periods": 3
+        },
+        {
+          "level": 5,
+          "min_score": 95,
+          "min_dimension": 85,
+          "consecutive_periods": 3
+        }
+      ]
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      if (pm.response.code === 201) {
+        pm.collectionVariables.set('maturity_rule_id', pm.response.json().data.id);
+      }
+    language: text/javascript
+order: 10000

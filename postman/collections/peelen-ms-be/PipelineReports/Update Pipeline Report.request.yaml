@@ -1,4 +1,5 @@
 $kind: http-request
+description: "Hanya WORKER pemilik report. Status IN_PROGRESS (default) atau COMPLETED. COMPLETED wajib evidence_after dan closed_date. status_revisi diisi server: SUBMITTED bila dikirim/diubah setelah shift selesai. Upload susulan terbuka sampai shift yang sama dimulai hari berikutnya (setelah itu 409 REPORT_UPLOAD_CLOSED). Report COMPLETED tidak bisa dikembalikan ke IN_PROGRESS."
 url: "{{base_url}}/api/v1/pipeline-reports/{{pipeline_report_id}}"
 method: PATCH
 headers:
@@ -7,12 +8,9 @@ body:
   type: json
   content: |-
     {
-      "pipeline_item_id": "{{pipeline_item_id}}",
-      "shift": "{{shift}}",
-      "report_date": "2024-01-15",
-      "status": "NOT_OK",
-      "status_revisi": "REVISED",
-      "notes": "Updated report notes",
-      "reason": "Correction needed"
+      "status": "COMPLETED",
+      "evidence_after": "pipeline-reports/sample/after.jpg",
+      "closed_date": "2026-10-15T09:40:00+07:00",
+      "notes": "Updated report notes"
     }
 order: 4000

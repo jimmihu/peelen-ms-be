@@ -1,5 +1,5 @@
 $kind: http-request
-description: "Get daily report. Filter options: date (defaults to today), site_id, vendor_id"
+description: "Get daily report. Filter options: date (defaults to today), site_id, vendor_id. Per pipeline: task_count, report_count, completed_count, in_progress_count, late_upload_count."
 url: "{{base_url}}/api/v1/reports/daily"
 method: GET
 params:

@@ -1,0 +1,29 @@
+$kind: http-request
+description: "Hasil periode yang sudah dibekukan. from/to = tanggal mulai periode (YYYY-MM-DD)."
+url: "{{base_url}}/api/v1/maturity-levels"
+method: GET
+params:
+  - key: scope
+    value: "VENDOR"
+  - key: vendor_id
+    value: "{{vendor_id}}"
+    disabled: true
+  - key: site_id
+    value: "{{site_id}}"
+    disabled: true
+  - key: worker_id
+    value: "{{user_id}}"
+    disabled: true
+  - key: from
+    value: ""
+    disabled: true
+  - key: to
+    value: ""
+    disabled: true
+  - key: page
+    value: "1"
+    disabled: true
+  - key: limit
+    value: "20"
+    disabled: true
+order: 16000

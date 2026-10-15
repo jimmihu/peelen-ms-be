@@ -1,0 +1,3 @@
+$kind: collection
+description: "Aturan SLA & maturity berversi (default per vendor oleh SUPER_ADMIN, override per site oleh ADMIN site tsb) dan skornya. Skor periode yang sudah selesai dibekukan oleh job server (atau make scoring-backfill); /live menghitung periode berjalan. scope: VENDOR | SITE | WORKER."
+order: 9000

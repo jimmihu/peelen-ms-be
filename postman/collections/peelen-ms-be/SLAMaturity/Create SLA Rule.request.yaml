@@ -1,0 +1,39 @@
+$kind: http-request
+description: "Membuat versi baru (menggantikan versi aktif). site_id null = default vendor (SUPER_ADMIN); terisi = override site (ADMIN site tsb atau SUPER_ADMIN). Total bobot 100; target persen 0-100, menit >= 0."
+url: "{{base_url}}/api/v1/sla-rules"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "vendor_id": "{{vendor_id}}",
+      "site_id": null,
+      "period_type": "MONTH",
+      "indicators": [
+        {
+          "code": "COMPLETION_RATE",
+          "weight": 40,
+          "target": 95
+        },
+        {
+          "code": "ON_TIME_RATE",
+          "weight": 40,
+          "target": 90
+        },
+        {
+          "code": "EVIDENCE_COMPLETE_RATE",
+          "weight": 20,
+          "target": 98
+        }
+      ]
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      if (pm.response.code === 201) {
+        pm.collectionVariables.set('sla_rule_id', pm.response.json().data.id);
+      }
+    language: text/javascript
+order: 5000
