@@ -1769,6 +1769,136 @@
               }
             }
           }
+        },
+        {
+          "name": "Create Pipeline Report (Upload Photos)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "pipeline_item_id",
+                  "value": "{{pipeline_item_id}}",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "shift",
+                  "value": "DAY",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "report_date",
+                  "value": "2026-10-15",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "COMPLETED",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "evidence_before",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "evidence_after",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "note_category",
+                  "value": "NEAR_MISS",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "notes",
+                  "value": "Area bersih dan aman",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "open_date",
+                  "value": "2026-10-15T09:00:00+07:00",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "closed_date",
+                  "value": "2026-10-15T09:40:00+07:00",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipeline-reports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipeline-reports"
+              ]
+            },
+            "description": "multipart/form-data. Photos go to MinIO; for JPEGs the camera's EXIF capture time becomes open_date (evidence_before) and closed_date (evidence_after), overriding any client value. Without EXIF, open_date/closed_date (RFC 3339) are used. Times must fall between 1 hour before the shift starts and now. Max 5 MB per photo."
+          }
+        },
+        {
+          "name": "Update Pipeline Report (Upload Photo)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "status",
+                  "value": "COMPLETED",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "evidence_after",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "notes",
+                  "value": "Foto after diunggah setelah dapat sinyal",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "closed_date",
+                  "value": "2026-10-15T09:40:00+07:00",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipeline-reports/{{pipeline_report_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipeline-reports",
+                "{{pipeline_report_id}}"
+              ]
+            },
+            "description": "multipart/form-data. Photos go to MinIO; for JPEGs the camera's EXIF capture time becomes open_date (evidence_before) and closed_date (evidence_after), overriding any client value. Without EXIF, open_date/closed_date (RFC 3339) are used. Times must fall between 1 hour before the shift starts and now. Max 5 MB per photo."
+          }
         }
       ]
     },
@@ -2648,6 +2778,38 @@
               ]
             },
             "description": ""
+          }
+        },
+        {
+          "name": "Maturity Rule History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-rules/history?vendor_id={{vendor_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-rules",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": false
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "All maturity rule versions for one vendor (+ site)."
           }
         },
         {
