@@ -11,15 +11,22 @@ import (
 
 	"peelen-ms-be/internal/domain/entity"
 	"peelen-ms-be/internal/domain/repository"
+	"peelen-ms-be/internal/infrastructure/storage"
 	"peelen-ms-be/internal/usecase"
 )
 
 type WorkflowHandler struct {
-	usecase usecase.WorkflowUsecase
+	usecase       usecase.WorkflowUsecase
+	objectStorage storage.ObjectStorage
+	// location interprets photo EXIF times that carry no UTC offset.
+	location *time.Location
 }
 
-func NewWorkflowHandler(workflowUsecase usecase.WorkflowUsecase) *WorkflowHandler {
-	return &WorkflowHandler{usecase: workflowUsecase}
+func NewWorkflowHandler(workflowUsecase usecase.WorkflowUsecase, objectStorage storage.ObjectStorage, location *time.Location) *WorkflowHandler {
+	if location == nil {
+		location = time.UTC
+	}
+	return &WorkflowHandler{usecase: workflowUsecase, objectStorage: objectStorage, location: location}
 }
 
 func (h *WorkflowHandler) ListSites(c *gin.Context) {
@@ -221,13 +228,14 @@ func (h *WorkflowHandler) GetPipelineReport(c *gin.Context) {
 }
 
 func (h *WorkflowHandler) CreatePipelineReport(c *gin.Context) {
-	var input entity.PipelineReportInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+	input, uploaded, ok := h.bindPipelineReportInput(c)
+	defer removeMultipartForm(c)
+	if !ok {
 		return
 	}
 	result, err := h.usecase.CreatePipelineReport(c.Request.Context(), currentUser(c), input)
 	if err != nil {
+		h.removeUploadedEvidence(uploaded)
 		handleWorkflowError(c, err)
 		return
 	}
@@ -235,13 +243,14 @@ func (h *WorkflowHandler) CreatePipelineReport(c *gin.Context) {
 }
 
 func (h *WorkflowHandler) UpdatePipelineReport(c *gin.Context) {
-	var input entity.PipelineReportInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		writeError(c, http.StatusBadRequest, "AUTH_INVALID_REQUEST", "Invalid request body")
+	input, uploaded, ok := h.bindPipelineReportInput(c)
+	defer removeMultipartForm(c)
+	if !ok {
 		return
 	}
 	result, err := h.usecase.UpdatePipelineReport(c.Request.Context(), currentUser(c), c.Param("id"), input)
 	if err != nil {
+		h.removeUploadedEvidence(uploaded)
 		handleWorkflowError(c, err)
 		return
 	}
@@ -363,6 +372,8 @@ func handleWorkflowError(c *gin.Context, err error) {
 		writeError(c, http.StatusBadRequest, "INVALID_OPERATIONAL_DATA", err.Error())
 	case errors.Is(err, repository.ErrConflict):
 		writeError(c, http.StatusConflict, "RESOURCE_CONFLICT", "The resource already exists or violates a constraint")
+	case errors.Is(err, entity.ErrReportUploadClosed):
+		writeError(c, http.StatusConflict, "REPORT_UPLOAD_CLOSED", err.Error())
 	default:
 		writeError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to complete the request")
 	}

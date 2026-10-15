@@ -32,6 +32,9 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+	// TimeZone is the plant's local zone (APP_TIMEZONE). Shift windows are
+	// evaluated in it, and photo EXIF times without an offset are read in it.
+	TimeZone string
 }
 
 type AuthConfig struct {
@@ -86,6 +89,7 @@ func Load() *Config {
 			Password: getEnv("DB_PASSWORD", "postgres"),
 			DBName:   getEnv("DB_NAME", "auth_db"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+			TimeZone: getEnv("APP_TIMEZONE", "Asia/Jakarta"),
 		},
 		Auth: AuthConfig{
 			AccessTokenDuration:  getDurationEnv("AUTH_ACCESS_TOKEN_DURATION", 15*time.Minute),

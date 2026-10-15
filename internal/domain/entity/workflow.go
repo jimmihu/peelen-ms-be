@@ -57,7 +57,6 @@ type PipelineReportInput struct {
 	Shift          string     `json:"shift"`
 	ReportDate     string     `json:"report_date"`
 	Status         string     `json:"status"`
-	StatusRevisi   string     `json:"status_revisi"`
 	EvidenceBefore *string    `json:"evidence_before"`
 	EvidenceAfter  *string    `json:"evidence_after"`
 	OpenDate       *time.Time `json:"open_date"`

@@ -14,6 +14,7 @@ type Config struct {
 	OperationalHandler *handler.OperationalHandler
 	WorkflowHandler    *handler.WorkflowHandler
 	AssignmentHandler  *handler.AssignmentHandler
+	ScoringHandler     *handler.ScoringHandler
 	DashboardHandler   *handler.DashboardHandler
 	AuthMiddleware     *middleware.AuthMiddleware
 	EnforceHTTPS       bool
@@ -140,6 +141,26 @@ func NewRouter(cfg Config) *gin.Engine {
 	pipelineItems.GET("/:id", cfg.OperationalHandler.Get(entity.ResourcePipelineItem))
 	pipelineItems.PATCH("/:id", cfg.OperationalHandler.Update(entity.ResourcePipelineItem))
 	pipelineItems.DELETE("/:id", cfg.OperationalHandler.Delete(entity.ResourcePipelineItem))
+	for _, kind := range []struct {
+		code, rules, results string
+	}{
+		{entity.RuleKindSLA, "/sla-rules", "/sla-scores"},
+		{entity.RuleKindMaturity, "/maturity-rules", "/maturity-levels"},
+	} {
+		catalog := "/sla-catalog"
+		if kind.code == entity.RuleKindMaturity {
+			catalog = "/maturity-catalog"
+		}
+		operations.GET(catalog, cfg.ScoringHandler.Catalog(kind.code))
+		rules := operations.Group(kind.rules)
+		rules.GET("", cfg.ScoringHandler.ListRules(kind.code, false))
+		rules.GET("/history", cfg.ScoringHandler.ListRules(kind.code, true))
+		rules.POST("", cfg.ScoringHandler.CreateRule(kind.code))
+		rules.GET("/:id", cfg.ScoringHandler.GetRule)
+		rules.DELETE("/:id", cfg.ScoringHandler.DeleteRule)
+		operations.GET(kind.results+"/live", cfg.ScoringHandler.Live(kind.code))
+		operations.GET(kind.results, cfg.ScoringHandler.History(kind.code))
+	}
 
 	operations.GET("/dashboard/summary", cfg.DashboardHandler.GetDashboard)
 

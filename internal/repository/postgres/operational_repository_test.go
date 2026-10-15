@@ -78,10 +78,26 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}
 
 	pipeline, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
-		VendorID: &vendorID, Name: stringPtr("Daily Safety"),
+		VendorID: &vendorID, SiteID: &siteID, Name: stringPtr("Daily Safety"),
 	}, "")
 	if err != nil {
 		t.Fatalf("create pipeline: %v", err)
+	}
+	if pipeline.SiteID == nil || *pipeline.SiteID != siteID {
+		t.Fatalf("pipeline site_id = %v, want %s", pipeline.SiteID, siteID)
+	}
+	var otherSiteID string
+	if err := db.QueryRowContext(ctx, `INSERT INTO sites (code, name) VALUES ($1, 'Unlinked Site') RETURNING id::text`, "OU"+suffix).Scan(&otherSiteID); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(ctx, `DELETE FROM sites WHERE id = $1`, otherSiteID)
+	if _, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &otherSiteID, Name: stringPtr("Unlinked"),
+	}, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("pipeline at a site not linked to the vendor: err = %v, want ErrNotFound", err)
+	}
+	if _, err := NewWorkflowRepository(db).UpdateVendor(ctx, vendorID, entity.Vendor{}, []string{}); !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("removing a site used by pipelines: err = %v, want ErrConflict", err)
 	}
 	adminAccess := entity.OperationalAccess{
 		UserID: actorID, Roles: []string{"ADMIN"}, SiteIDs: []string{siteID},
@@ -93,9 +109,38 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	if total != 1 || len(adminPipelines) != 1 || adminPipelines[0].ID != pipeline.ID {
 		t.Fatalf("admin should see pipelines through its site-vendor relation: total=%d records=%+v", total, adminPipelines)
 	}
+	// The vendor also works at a second site outside the admin's scope: the
+	// admin must not create pipelines there.
+	var foreignSiteID string
+	if err := db.QueryRowContext(ctx, `INSERT INTO sites (code, name) VALUES ($1, 'Foreign Site') RETURNING id::text`, "OF"+suffix).Scan(&foreignSiteID); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(ctx, `DELETE FROM sites WHERE id = $1`, foreignSiteID)
+	if _, err := db.ExecContext(ctx, `INSERT INTO vendor_sites (vendor_id, site_id) VALUES ($1, $2)`, vendorID, foreignSiteID); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(ctx, `DELETE FROM vendor_sites WHERE vendor_id = $1 AND site_id = $2`, vendorID, foreignSiteID)
+	if _, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &foreignSiteID, Name: stringPtr("Other admin's site"),
+	}, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("admin creating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
+	}
+	foreignPipeline, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &foreignSiteID, Name: stringPtr("Foreign area"),
+	}, "")
+	if err != nil {
+		t.Fatalf("super admin creating a pipeline at the second site: %v", err)
+	}
+	if _, err := repo.UpdateOperational(ctx, adminAccess, entity.ResourcePipeline, foreignPipeline.ID,
+		entity.OperationalInput{Name: stringPtr("Renamed by another site's admin")}, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("admin updating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
+	}
+	if err := repo.DeleteOperational(ctx, adminAccess, entity.ResourcePipeline, foreignPipeline.ID, ""); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("admin deactivating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
+	}
 	outsideScopeVendorID := "30000000-0000-4000-8000-000000000001"
 	if _, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
-		VendorID: &outsideScopeVendorID, Name: stringPtr("Out of scope"),
+		VendorID: &outsideScopeVendorID, SiteID: &siteID, Name: stringPtr("Out of scope"),
 	}, ""); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("expected out-of-scope vendor to be hidden, got %v", err)
 	}
