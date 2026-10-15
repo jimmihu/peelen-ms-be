@@ -1,4 +1,4 @@
-.PHONY: build run test clean deps db-setup db-seed db-reset db-seed-scoring db-migrate scoring-backfill bootstrap-admin
+.PHONY: build run test clean deps db-setup db-seed db-reset db-seed-scoring db-migrate scoring-backfill e2e-sql e2e-reset bootstrap-admin
 
 DB_NAME ?= auth_db
 
@@ -54,6 +54,15 @@ scoring-backfill:
 MIGRATIONS ?= $(sort $(wildcard ddl/migrations/*.sql))
 db-migrate:
 	set -a; . ./.env; set +a; for f in $(MIGRATIONS); do echo "== $$f"; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f "$$f" || exit 1; done
+
+# One-file E2E reset (ddl/e2e_reset.sql), generated from the migration and seeds.
+e2e-sql:
+	scripts/build_e2e_reset.sh
+
+# Wipe the dev database, load E2E data, and compute SLA/maturity results.
+e2e-reset:
+	set -a; . ./.env; set +a; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f ddl/e2e_reset.sql
+	$(MAKE) scoring-backfill
 
 # Set BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD in the environment first.
 bootstrap-admin:

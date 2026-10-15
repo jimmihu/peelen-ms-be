@@ -4,11 +4,12 @@ Dokumen ini menjelaskan data yang dibuat oleh `make db-reset` (`ddl/seed_v3.sql`
 
 ## 1. Menyiapkan data
 
-```bash
-make db-reset           # hapus semua data, isi master data, akun, penugasan, laporan, aturan SLA/maturity
-make scoring-backfill   # hitung fakta harian dan bekukan semua periode yang sudah selesai
-make run                # jalankan API (job scoring juga berjalan tiap 15 menit)
-```
+Cukup satu file: **[ddl/e2e_reset.sql](../ddl/e2e_reset.sql)**. File ini membuat tabel SLA bila belum ada, menghapus dan mengisi ulang semua data, mengisi aturan SLA/maturity, dan menjadikan `pipelines.site_id` wajib.
+
+- **DBeaver:** buka `ddl/e2e_reset.sql`, jalankan sebagai script (Alt+X), lalu jalankan server (`make run`). Job scoring di server langsung menghitung fakta dan membekukan periode yang sudah selesai.
+- **Terminal:** `make e2e-reset` (menjalankan file tsb sekaligus `make scoring-backfill`), lalu `make run`.
+
+File ini dihasilkan dari migration 007, `seed_v3.sql`, dan `seed_scoring.sql`; setelah mengubah salah satunya, buat ulang dengan `make e2e-sql`.
 
 - Semua akun memakai password `Password123!`.
 - Data laporan dimulai dari **awal kuartal lalu** sampai hari ini. Contoh jika dijalankan 15 Oktober 2026: data 1 Juli – 15 Oktober 2026.
