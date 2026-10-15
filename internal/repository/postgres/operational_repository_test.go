@@ -125,6 +125,39 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}, ""); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("admin creating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
 	}
+	// UAT regression: a site admin updates, extends, and deactivates a pipeline
+	// at its own site (all returned 404 before the pipelineWriteScope fix).
+	ownPipeline, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
+		VendorID: &vendorID, SiteID: &siteID, Name: stringPtr("Admin own area"),
+	}, "")
+	if err != nil {
+		t.Fatalf("admin creating a pipeline at its own site: %v", err)
+	}
+	if _, err := repo.UpdateOperational(ctx, adminAccess, entity.ResourcePipeline, ownPipeline.ID,
+		entity.OperationalInput{Name: stringPtr("Admin own area renamed")}, ""); err != nil {
+		t.Fatalf("admin updating a pipeline at its own site: %v", err)
+	}
+	ownItem, err := repo.CreateOperational(ctx, superAdmin, entity.ResourceItem, entity.OperationalInput{
+		Name: stringPtr("Admin own item"),
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownPipelineItem, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipelineItem, entity.OperationalInput{
+		PipelineID: &ownPipeline.ID, ItemID: &ownItem.ID,
+	}, "")
+	if err != nil {
+		t.Fatalf("admin adding an item to a pipeline at its own site: %v", err)
+	}
+	sortOrder := 3
+	if _, err := repo.UpdateOperational(ctx, adminAccess, entity.ResourcePipelineItem, ownPipelineItem.ID,
+		entity.OperationalInput{SortOrder: &sortOrder}, ""); err != nil {
+		t.Fatalf("admin reordering a pipeline item at its own site: %v", err)
+	}
+	if err := repo.DeleteOperational(ctx, adminAccess, entity.ResourcePipeline, ownPipeline.ID, ""); err != nil {
+		t.Fatalf("admin deactivating a pipeline at its own site: %v", err)
+	}
+
 	foreignPipeline, err := repo.CreateOperational(ctx, superAdmin, entity.ResourcePipeline, entity.OperationalInput{
 		VendorID: &vendorID, SiteID: &foreignSiteID, Name: stringPtr("Foreign area"),
 	}, "")
