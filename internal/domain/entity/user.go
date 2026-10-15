@@ -20,4 +20,14 @@ type User struct {
 	Roles              []string   `json:"roles,omitempty"`
 	Sites              []string   `json:"site_ids,omitempty"`
 	Vendors            []string   `json:"vendor_ids,omitempty"`
+	// Scopes repeats Sites and Vendors with display names (user management only).
+	Scopes []UserScope `json:"scopes,omitempty"`
+}
+
+// UserScope is one site or vendor a user is scoped to.
+type UserScope struct {
+	Type string `json:"type"` // SITE | VENDOR
+	ID   string `json:"id"`
+	Code string `json:"code"`
+	Name string `json:"name"`
 }
