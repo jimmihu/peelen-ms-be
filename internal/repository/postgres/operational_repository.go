@@ -391,7 +391,7 @@ func scopePredicate(vendorExpr string, start int) string {
 // caller's sites for site-scoped admins; vendor-scoped and super admins pass.
 // It expects the same three parameters as scopePredicate starting at start.
 func pipelineWriteScope(alias string, start int) string {
-	return fmt.Sprintf(`($%d::boolean OR %[2]s.vendor_id = ANY($%d::uuid[]) OR %[2]s.site_id = ANY($%d::uuid[]))`,
+	return fmt.Sprintf(`($%[1]d::boolean OR %[2]s.vendor_id = ANY($%[3]d::uuid[]) OR %[2]s.site_id = ANY($%[4]d::uuid[]))`,
 		start, alias, start+1, start+2)
 }
 
