@@ -17,7 +17,7 @@ type ScoringUsecase interface {
 	GetRule(ctx context.Context, actor *entity.User, id string) (*entity.ScoreRule, error)
 	ListRules(ctx context.Context, actor *entity.User, f entity.RuleFilter) ([]entity.ScoreRule, error)
 	DeleteRule(ctx context.Context, actor *entity.User, id string) error
-	LiveResults(ctx context.Context, actor *entity.User, kind, scope, vendorID string) ([]entity.ScoreResult, error)
+	LiveResults(ctx context.Context, actor *entity.User, f entity.LiveFilter) ([]entity.ScoreResult, error)
 	ListResults(ctx context.Context, actor *entity.User, f entity.ResultFilter) ([]entity.ScoreResult, int, error)
 	FinalizeFacts(ctx context.Context) (int64, error)
 	ClosePeriods(ctx context.Context) (int, error)
@@ -215,9 +215,9 @@ func groupKey(c entity.ScopeCounts) string {
 
 // evaluate scores one rule for one scope over [start, end]. Maturity rules also
 // score the previous periods needed by the level gates.
-func (u *ScoringUsecaseImpl) evaluate(ctx context.Context, rule entity.ScoreRule, scope, vendorID string,
-	siteIDs, excludeSiteIDs []string, start, end time.Time) ([]entity.ScoreResult, error) {
-	query := entity.FactQuery{Scope: scope, VendorID: vendorID, SiteIDs: siteIDs, ExcludeSiteIDs: excludeSiteIDs, From: start, To: end}
+func (u *ScoringUsecaseImpl) evaluate(ctx context.Context, rule entity.ScoreRule, query entity.FactQuery) ([]entity.ScoreResult, error) {
+	scope, vendorID, siteIDs, excludeSiteIDs := query.Scope, query.VendorID, query.SiteIDs, query.ExcludeSiteIDs
+	start, end := query.From, query.To
 	current, err := u.repository.AggregateFacts(ctx, query)
 	if err != nil {
 		return nil, err
@@ -269,7 +269,7 @@ func (u *ScoringUsecaseImpl) evaluate(ctx context.Context, rule entity.ScoreRule
 		prevStart = scoring.PreviousStart(pt, prevStart)
 		_, prevEnd := scoring.PeriodBounds(pt, prevStart)
 		past, err := u.repository.AggregateFacts(ctx, entity.FactQuery{Scope: scope, VendorID: vendorID,
-			SiteIDs: siteIDs, ExcludeSiteIDs: excludeSiteIDs, From: prevStart, To: prevEnd})
+			SiteIDs: siteIDs, ExcludeSiteIDs: excludeSiteIDs, WorkerID: query.WorkerID, From: prevStart, To: prevEnd})
 		if err != nil {
 			return nil, err
 		}
@@ -352,13 +352,27 @@ func (u *ScoringUsecaseImpl) ListResults(ctx context.Context, actor *entity.User
 }
 
 // LiveResults scores the running period of every active rule the actor can see.
-func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User, kind, scope, vendorID string) ([]entity.ScoreResult, error) {
+// LiveResults scores the running period of every active rule the actor can see,
+// optionally narrowed to one vendor, site, or worker.
+func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User, f entity.LiveFilter) ([]entity.ScoreResult, error) {
+	kind, scope, vendorID := f.Kind, f.Scope, f.VendorID
 	if kind != entity.RuleKindSLA && kind != entity.RuleKindMaturity || !validScope(scope) {
 		return nil, ErrInvalidOperationalData
+	}
+	for _, id := range []string{f.VendorID, f.SiteID, f.WorkerID} {
+		if id != "" && !scopeUUIDPattern.MatchString(id) {
+			return nil, invalid("vendor_id, site_id, and worker_id must be UUIDs")
+		}
+	}
+	if scope == entity.ScopeVendor && (f.SiteID != "" || f.WorkerID != "") || scope == entity.ScopeSite && f.WorkerID != "" {
+		return nil, invalid("site_id needs scope SITE or WORKER; worker_id needs scope WORKER")
 	}
 	vis, err := u.visibility(ctx, actor, scope)
 	if err != nil {
 		return nil, err
+	}
+	if vis.OnlyWorkerID != "" {
+		f.WorkerID = vis.OnlyWorkerID // a Worker only ever sees itself
 	}
 	// Load only rules of vendors the caller can see, so a narrow caller does not
 	// trigger scoring of every vendor.
@@ -390,16 +404,25 @@ func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User
 	}
 	for vendor, rule := range defaults {
 		start, end := scoring.PeriodBounds(scoring.PeriodType(rule.PeriodType), today)
-		var exclude []string
-		for _, o := range overrides[vendor] {
-			exclude = append(exclude, *o.SiteID)
+		query := entity.FactQuery{Scope: scope, VendorID: vendor, WorkerID: f.WorkerID, From: start, To: end}
+		if scope != entity.ScopeVendor {
+			for _, o := range overrides[vendor] {
+				query.ExcludeSiteIDs = append(query.ExcludeSiteIDs, *o.SiteID)
+			}
 		}
-		var res []entity.ScoreResult
-		if scope == entity.ScopeVendor {
-			res, err = u.evaluate(ctx, rule, scope, vendor, nil, nil, start, end)
-		} else {
-			res, err = u.evaluate(ctx, rule, scope, vendor, nil, exclude, start, end)
+		if f.SiteID != "" {
+			// The default applies to the site only if the vendor works there
+			// and the site has no override of its own.
+			sites, err := u.repository.VendorSites(ctx, vendor)
+			if err != nil {
+				return nil, err
+			}
+			if !containsString(sites, f.SiteID) || containsString(query.ExcludeSiteIDs, f.SiteID) {
+				continue
+			}
+			query.SiteIDs = []string{f.SiteID}
 		}
+		res, err := u.evaluate(ctx, rule, query)
 		if err != nil {
 			return nil, err
 		}
@@ -408,8 +431,12 @@ func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User
 	if scope != entity.ScopeVendor {
 		for vendor, list := range overrides {
 			for _, rule := range list {
+				if f.SiteID != "" && *rule.SiteID != f.SiteID {
+					continue
+				}
 				start, end := scoring.PeriodBounds(scoring.PeriodType(rule.PeriodType), today)
-				res, err := u.evaluate(ctx, rule, scope, vendor, []string{*rule.SiteID}, nil, start, end)
+				res, err := u.evaluate(ctx, rule, entity.FactQuery{Scope: scope, VendorID: vendor,
+					SiteIDs: []string{*rule.SiteID}, WorkerID: f.WorkerID, From: start, To: end})
 				if err != nil {
 					return nil, err
 				}
@@ -518,7 +545,7 @@ func (u *ScoringUsecaseImpl) closePeriod(ctx context.Context, rule entity.ScoreR
 			if scope != entity.ScopeVendor {
 				exclude = overrides
 			}
-			res, err := u.evaluate(ctx, rule, scope, rule.VendorID, nil, exclude, start, end)
+			res, err := u.evaluate(ctx, rule, entity.FactQuery{Scope: scope, VendorID: rule.VendorID, ExcludeSiteIDs: exclude, From: start, To: end})
 			if err != nil {
 				return false, err
 			}
@@ -526,7 +553,7 @@ func (u *ScoringUsecaseImpl) closePeriod(ctx context.Context, rule entity.ScoreR
 		}
 	} else {
 		for _, scope := range []string{entity.ScopeSite, entity.ScopeWorker} {
-			res, err := u.evaluate(ctx, rule, scope, rule.VendorID, []string{*rule.SiteID}, nil, start, end)
+			res, err := u.evaluate(ctx, rule, entity.FactQuery{Scope: scope, VendorID: rule.VendorID, SiteIDs: []string{*rule.SiteID}, From: start, To: end})
 			if err != nil {
 				return false, err
 			}

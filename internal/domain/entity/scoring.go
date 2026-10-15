@@ -22,7 +22,17 @@ type FactQuery struct {
 	VendorID       string
 	SiteIDs        []string
 	ExcludeSiteIDs []string
+	WorkerID       string // optional: one worker only
 	From, To       time.Time
+}
+
+// LiveFilter selects what a live score request covers.
+type LiveFilter struct {
+	Kind     string
+	Scope    string
+	VendorID string
+	SiteID   string // SITE and WORKER scopes only
+	WorkerID string // WORKER scope only
 }
 
 type ScopeCounts struct {

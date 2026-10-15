@@ -2760,10 +2760,20 @@
                   "key": "vendor_id",
                   "value": "{{vendor_id}}",
                   "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "worker_id",
+                  "value": "{{user_id}}",
+                  "disabled": true
                 }
               ]
             },
-            "description": "Running period, computed live. scope: VENDOR | SITE | WORKER."
+            "description": "Running period, computed live. scope: VENDOR | SITE | WORKER. site_id needs scope SITE or WORKER; worker_id needs scope WORKER."
           }
         },
         {
@@ -2853,10 +2863,20 @@
                   "key": "vendor_id",
                   "value": "{{vendor_id}}",
                   "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "worker_id",
+                  "value": "{{user_id}}",
+                  "disabled": true
                 }
               ]
             },
-            "description": ""
+            "description": "Running period, computed live. scope: VENDOR | SITE | WORKER. site_id needs scope SITE or WORKER; worker_id needs scope WORKER."
           }
         },
         {

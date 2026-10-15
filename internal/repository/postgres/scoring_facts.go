@@ -134,7 +134,7 @@ func (r *ScoringRepositoryImpl) AggregateFacts(ctx context.Context, q entity.Fac
 	if !ok {
 		return nil, entity.ErrInvalidOperationalData
 	}
-	args := []any{q.From, q.To, q.VendorID, pq.Array(q.SiteIDs), pq.Array(q.ExcludeSiteIDs)}
+	args := []any{q.From, q.To, q.VendorID, pq.Array(q.SiteIDs), pq.Array(q.ExcludeSiteIDs), q.WorkerID}
 	query := `
 		WITH last_final AS (SELECT ` + factsThroughSQL + ` AS day),
 		facts AS (
@@ -154,6 +154,7 @@ func (r *ScoringRepositoryImpl) AggregateFacts(ctx context.Context, q entity.Fac
 			WHERE vendor_id = $3
 				AND (coalesce(cardinality($4::uuid[]), 0) = 0 OR site_id = ANY($4::uuid[]))
 				AND NOT coalesce(site_id = ANY($5::uuid[]), false)
+				AND ($6::text = '' OR worker_id::text = $6::text)
 		),
 		daily AS (
 			SELECT ` + groupBy[q.Scope] + `, report_date,

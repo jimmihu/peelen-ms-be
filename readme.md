@@ -330,7 +330,7 @@ into SLA scores and maturity levels per vendor, per vendor site, and per worker.
 | `GET /sla-rules/history`, `GET /maturity-rules/history` | All versions |
 | `POST /sla-rules`, `POST /maturity-rules` | Create a new version |
 | `GET`/`DELETE /sla-rules/{id}`, `/maturity-rules/{id}` | Read / deactivate a version |
-| `GET /sla-scores/live`, `GET /maturity-levels/live` | Running period (`scope`, `vendor_id`) |
+| `GET /sla-scores/live`, `GET /maturity-levels/live` | Running period (`scope`, `vendor_id`, `site_id` for SITE/WORKER, `worker_id` for WORKER) |
 | `GET /sla-scores`, `GET /maturity-levels` | Frozen periods (`scope`, `vendor_id`, `site_id`, `worker_id`, `from`, `to`, `page`, `limit`) |
 
 ```http

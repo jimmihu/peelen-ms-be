@@ -101,7 +101,10 @@ func (h *ScoringHandler) DeleteRule(c *gin.Context) {
 
 func (h *ScoringHandler) Live(kind string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		results, err := h.usecase.LiveResults(c.Request.Context(), currentUser(c), kind, c.DefaultQuery("scope", entity.ScopeVendor), c.Query("vendor_id"))
+		results, err := h.usecase.LiveResults(c.Request.Context(), currentUser(c), entity.LiveFilter{
+			Kind: kind, Scope: c.DefaultQuery("scope", entity.ScopeVendor),
+			VendorID: c.Query("vendor_id"), SiteID: c.Query("site_id"), WorkerID: c.Query("worker_id"),
+		})
 		if err != nil {
 			handleWorkflowError(c, err)
 			return
