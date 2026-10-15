@@ -7,9 +7,16 @@ import (
 )
 
 type DashboardRepository interface {
-	GetDashboard(
+	GetDashboardSummary(
 		ctx context.Context,
 		access entity.OperationalAccess,
 		filter entity.DashboardFilter,
-	) (*entity.DashboardResponse, error)
+	) (*entity.DashboardSummaryResponse, error)
+
+	GetDashboardDetail(
+		ctx context.Context,
+		access entity.OperationalAccess,
+		filter entity.DashboardFilter,
+		detailType string,
+	) (*entity.DashboardDetailResponse, error)
 }

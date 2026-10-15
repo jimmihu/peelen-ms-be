@@ -1950,13 +1950,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/dashboard/summary",
+              "raw": "{{base_url}}/api/v1/dashboard/summary?date={{date}}&site_id={{site_id}}&vendor_id={{vendor_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "dashboard", "summary"],
               "query": [
                 {
                   "key": "date",
-                  "value": "",
+                  "value": "{{date}}",
                   "disabled": true
                 },
                 {
@@ -1972,7 +1972,43 @@
               ]
             },
             "description": "Get dashboard summary. Filter options: date (defaults to today), site_id, vendor_id. If site_id or vendor_id is empty, data is retrieved for all sites or vendors within the user's access scope."
-          }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dashboard Summary Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/summary/detail?type=vendor_progress",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dashboard", "summary", "detail"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "vendor_progress"
+                },
+                {
+                  "key": "date",
+                  "value": "{{date}}",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get dashboard detail based on type. Supported detail types: vendor_progress, inventory_reports, safety_reports. Filter options: date, site_id, vendor_id."
+          },
+          "response": []
         }
       ]
     }

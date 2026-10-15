@@ -1,6 +1,9 @@
 package entity
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type DashboardFilter struct {
 	UserID   string `json:"-"`
@@ -17,7 +20,17 @@ type DashboardTaskSummary struct {
 	NotStarted int64 `json:"pending"`
 }
 
-type DashboardVendorProgress struct {
+type DashboardResponse struct {
+	Filter          DashboardFilter                  `json:"filter"`
+	TaskSummary     DashboardTaskSummary             `json:"task_summary"`
+	VendorProgress  []DashboardVendorProgressSummary `json:"vendor_progress"`
+	InventoryReport []DashboardInventoryReport       `json:"inventory_reports"`
+	SafetyReports   []DashboardSafetyReport         `json:"safety_reports"`
+}
+
+type DashboardSummaryResponse = DashboardResponse
+
+type DashboardVendorProgressSummary struct {
 	VendorID           string  `json:"vendor_id"`
 	VendorName         string  `json:"vendor_name"`
 	TotalTask          int64   `json:"total_task"`
@@ -25,6 +38,23 @@ type DashboardVendorProgress struct {
 	InProgress         int64   `json:"in_progress"`
 	NotStarted         int64   `json:"pending"`
 	ProgressPercentage float64 `json:"progress_percentage"`
+}
+
+type DashboardVendorProgress struct {
+	VendorID             string          `json:"vendor_id"`
+	VendorName           string          `json:"vendor_name"`
+	TotalTask            int64           `json:"total_task"`
+	Completed            int64           `json:"completed"`
+	InProgress           int64           `json:"in_progress"`
+	NotStarted           int64           `json:"pending"`
+	ProgressPercentage   float64         `json:"progress_percentage"`
+	VendorProgressDetail json.RawMessage `json:"vendor_progress_detail,omitempty"`
+}
+
+type DashboardVendorProgressResponse struct {
+	SiteID         string                    `json:"site_id"`
+	SiteName       string                    `json:"site_name"`
+	VendorProgress []DashboardVendorProgress `json:"vendor_progress"`
 }
 
 type DashboardInventoryReport struct {
@@ -54,10 +84,7 @@ type DashboardSafetyReport struct {
 	ReportDate   time.Time  `json:"report_date"`
 }
 
-type DashboardResponse struct {
-	Filter          DashboardFilter            `json:"filter"`
-	TaskSummary     DashboardTaskSummary       `json:"task_summary"`
-	VendorProgress  []DashboardVendorProgress  `json:"vendor_progress"`
-	InventoryReport []DashboardInventoryReport `json:"inventory_reports"`
-	SafetyReports   []DashboardSafetyReport    `json:"safety_reports"`
+type DashboardDetailResponse struct {
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
