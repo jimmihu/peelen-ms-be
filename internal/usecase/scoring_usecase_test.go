@@ -37,6 +37,9 @@ func (f *scoringRepoFake) GetRule(context.Context, string) (*entity.ScoreRule, e
 	return f.rule, nil
 }
 func (f *scoringRepoFake) DeactivateRule(context.Context, string) error { return nil }
+func (f *scoringRepoFake) LookupNames(context.Context, []string, []string, []string) (entity.NameLookup, error) {
+	return entity.NameLookup{}, nil
+}
 
 func target(v float64) *float64 { return &v }
 

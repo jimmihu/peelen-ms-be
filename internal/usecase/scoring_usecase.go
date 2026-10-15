@@ -348,7 +348,56 @@ func (u *ScoringUsecaseImpl) ListResults(ctx context.Context, actor *entity.User
 	if f.From.IsZero() {
 		f.From = f.To.AddDate(-1, 0, 0)
 	}
-	return u.repository.ListResults(ctx, f)
+	results, total, err := u.repository.ListResults(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := u.attachNames(ctx, results); err != nil {
+		return nil, 0, err
+	}
+	return results, total, nil
+}
+
+// attachNames fills vendor, site, and worker names with one lookup per kind.
+func (u *ScoringUsecaseImpl) attachNames(ctx context.Context, results []entity.ScoreResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	ids := map[string]map[string]bool{"vendor": {}, "site": {}, "user": {}}
+	for _, r := range results {
+		ids["vendor"][r.VendorID] = true
+		if r.SiteID != nil {
+			ids["site"][*r.SiteID] = true
+		}
+		if r.WorkerID != nil {
+			ids["user"][*r.WorkerID] = true
+		}
+	}
+	keys := func(set map[string]bool) []string {
+		list := make([]string, 0, len(set))
+		for id := range set {
+			list = append(list, id)
+		}
+		return list
+	}
+	names, err := u.repository.LookupNames(ctx, keys(ids["vendor"]), keys(ids["site"]), keys(ids["user"]))
+	if err != nil {
+		return err
+	}
+	for i := range results {
+		results[i].VendorName = names.Vendors[results[i].VendorID]
+		if r := results[i]; r.SiteID != nil {
+			if name, ok := names.Sites[*r.SiteID]; ok {
+				results[i].SiteName = &name
+			}
+		}
+		if r := results[i]; r.WorkerID != nil {
+			if name, ok := names.Users[*r.WorkerID]; ok {
+				results[i].WorkerName = &name
+			}
+		}
+	}
+	return nil
 }
 
 // LiveResults scores the running period of every active rule the actor can see.
@@ -457,6 +506,9 @@ func (u *ScoringUsecaseImpl) LiveResults(ctx context.Context, actor *entity.User
 		if visibleResult(vis, r) {
 			filtered = append(filtered, r)
 		}
+	}
+	if err := u.attachNames(ctx, filtered); err != nil {
+		return nil, err
 	}
 	return filtered, nil
 }

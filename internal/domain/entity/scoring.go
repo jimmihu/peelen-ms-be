@@ -93,13 +93,23 @@ type ScoreResult struct {
 	RuleID      string    `json:"rule_id,omitempty"`
 	ScopeType   string    `json:"scope_type"`
 	VendorID    string    `json:"vendor_id"`
+	VendorName  string    `json:"vendor_name,omitempty"`
 	SiteID      *string   `json:"site_id,omitempty"`
+	SiteName    *string   `json:"site_name,omitempty"`
 	WorkerID    *string   `json:"worker_id,omitempty"`
+	WorkerName  *string   `json:"worker_name,omitempty"`
 	PeriodType  string    `json:"period_type,omitempty"`
 	PeriodStart time.Time `json:"period_start"`
 	PeriodEnd   time.Time `json:"period_end"`
 	Live        bool      `json:"live"`
 	scoring.Result
+}
+
+// NameLookup maps vendor, site, and user IDs to display names.
+type NameLookup struct {
+	Vendors map[string]string
+	Sites   map[string]string
+	Users   map[string]string
 }
 
 type ResultFilter struct {

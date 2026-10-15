@@ -205,3 +205,53 @@ func TestLiveResultsRejectsFiltersOutsideScope(t *testing.T) {
 		}
 	}
 }
+
+type namedResultsFake struct {
+	evalRepoFake
+	history []entity.ScoreResult
+	lookups int
+}
+
+func (f *namedResultsFake) ListResults(context.Context, entity.ResultFilter) ([]entity.ScoreResult, int, error) {
+	return f.history, len(f.history), nil
+}
+
+func (f *namedResultsFake) LookupNames(_ context.Context, vendorIDs, siteIDs, userIDs []string) (entity.NameLookup, error) {
+	f.lookups++
+	return entity.NameLookup{
+		Vendors: map[string]string{testVendor: "PT Mitra Teknik Abadi"},
+		Sites:   map[string]string{testSite: "PLTU Paiton"},
+		Users:   map[string]string{"40000000-0000-4000-8000-000000000001": "Andi Saputra"},
+	}, nil
+}
+
+func TestResultsCarryVendorSiteAndWorkerNames(t *testing.T) {
+	worker := "40000000-0000-4000-8000-000000000001"
+	repo := &namedResultsFake{history: []entity.ScoreResult{
+		{Kind: "SLA", ScopeType: entity.ScopeWorker, VendorID: testVendor, SiteID: strPtr(testSite), WorkerID: &worker},
+	}}
+	superAdmin := &entity.User{ID: "sa", Roles: []string{"SUPER_ADMIN"}}
+	results, _, err := NewScoringUsecase(repo).ListResults(context.Background(), superAdmin,
+		entity.ResultFilter{Kind: "SLA", Scope: entity.ScopeWorker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := results[0]
+	if r.VendorName != "PT Mitra Teknik Abadi" || r.SiteName == nil || *r.SiteName != "PLTU Paiton" ||
+		r.WorkerName == nil || *r.WorkerName != "Andi Saputra" {
+		t.Fatalf("names not attached: %+v", r)
+	}
+
+	// Live results get names too, looked up once for the whole response.
+	live := &namedResultsFake{evalRepoFake: evalRepoFake{
+		rules:  []entity.ScoreRule{liveSLARule(nil)},
+		counts: map[string][]entity.ScopeCounts{entity.ScopeVendor: {{VendorID: testVendor, Counts: scoring.Counts{Tasks: 1, Completed: 1, Reported: 1}}}},
+	}}
+	liveResults, err := NewScoringUsecase(live).LiveResults(context.Background(), superAdmin, entity.LiveFilter{Kind: "SLA", Scope: entity.ScopeVendor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(liveResults) != 1 || liveResults[0].VendorName != "PT Mitra Teknik Abadi" || live.lookups != 1 {
+		t.Fatalf("live names: %+v (lookups %d)", liveResults, live.lookups)
+	}
+}

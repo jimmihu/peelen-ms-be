@@ -25,4 +25,5 @@ type ScoringRepository interface {
 	SaveResult(ctx context.Context, result entity.ScoreResult) error
 	ListResults(ctx context.Context, f entity.ResultFilter) ([]entity.ScoreResult, int, error)
 	WithJobLock(ctx context.Context, fn func(context.Context) error) (bool, error)
+	LookupNames(ctx context.Context, vendorIDs, siteIDs, userIDs []string) (entity.NameLookup, error)
 }
