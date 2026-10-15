@@ -379,3 +379,40 @@ func (r *ScoringRepositoryImpl) WithJobLock(ctx context.Context, fn func(context
 	defer conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, scoringJobLockKey)
 	return true, fn(ctx)
 }
+
+// LookupNames returns display names for the given IDs; workers fall back to
+// their username when they have no full name.
+func (r *ScoringRepositoryImpl) LookupNames(ctx context.Context, vendorIDs, siteIDs, userIDs []string) (entity.NameLookup, error) {
+	names := entity.NameLookup{Vendors: map[string]string{}, Sites: map[string]string{}, Users: map[string]string{}}
+	queries := []struct {
+		sql  string
+		ids  []string
+		dest map[string]string
+	}{
+		{`SELECT id::text, name FROM vendors WHERE id = ANY($1::uuid[])`, vendorIDs, names.Vendors},
+		{`SELECT id::text, name FROM sites WHERE id = ANY($1::uuid[])`, siteIDs, names.Sites},
+		{`SELECT id::text, coalesce(nullif(full_name, ''), username) FROM users WHERE id = ANY($1::uuid[])`, userIDs, names.Users},
+	}
+	for _, q := range queries {
+		if len(q.ids) == 0 {
+			continue
+		}
+		rows, err := r.db.QueryContext(ctx, q.sql, pq.Array(q.ids))
+		if err != nil {
+			return names, err
+		}
+		for rows.Next() {
+			var id, name string
+			if err := rows.Scan(&id, &name); err != nil {
+				rows.Close()
+				return names, err
+			}
+			q.dest[id] = name
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return names, err
+		}
+	}
+	return names, nil
+}
