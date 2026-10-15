@@ -19,6 +19,7 @@ import (
 	"peelen-ms-be/internal/infrastructure/config"
 	"peelen-ms-be/internal/infrastructure/database"
 	"peelen-ms-be/internal/infrastructure/storage"
+	"peelen-ms-be/internal/jobs"
 	"peelen-ms-be/internal/repository/postgres"
 	"peelen-ms-be/internal/usecase"
 )
@@ -94,6 +95,12 @@ func main() {
 	assignmentRepository := postgres.NewAssignmentRepository(db)
 	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepository)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentUsecase)
+	scoringRepository := postgres.NewScoringRepository(db)
+	scoringUsecase := usecase.NewScoringUsecase(scoringRepository).(*usecase.ScoringUsecaseImpl).WithLocation(location)
+	scoringHandler := handler.NewScoringHandler(scoringUsecase)
+	jobCtx, stopJobs := context.WithCancel(context.Background())
+	defer stopJobs()
+	jobs.StartScoringJob(jobCtx, scoringUsecase, 15*time.Minute)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
@@ -105,6 +112,7 @@ func main() {
 		OperationalHandler: operationalHandler,
 		WorkflowHandler:    workflowHandler,
 		AssignmentHandler:  assignmentHandler,
+		ScoringHandler:     scoringHandler,
 		AuthMiddleware:     authMiddleware,
 		EnforceHTTPS:       cfg.Server.Mode == "release",
 		TrustedProxyCIDRs:  cfg.Server.TrustedProxyCIDRs,
@@ -142,6 +150,7 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+	stopJobs()
 
 	// Create a deadline to wait for
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

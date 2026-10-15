@@ -4,7 +4,8 @@
 -- lalu mengisi ulang: master role & shift, 10 PLTU, 5 vendor, superadmin,
 -- 1 admin per PLTU, 1 admin worker per vendor, 10 worker per vendor,
 -- 9 pipeline area (55 item lokasi) per site vendor, assignment task tiap worker,
--- pipeline report 7 hari terakhir (detail + history, tanpa review admin),
+-- pipeline report 91 hari terakhir (detail + history, tanpa review admin),
+-- contoh aturan SLA & maturity (fakta & snapshot dibuat job saat server jalan),
 -- inventory dan laporannya.
 -- Password semua user: Password123!
 -- =====================================================
@@ -309,7 +310,7 @@ JOIN pipeline_items pi ON pi.pipeline_id = np.id
 WHERE w.username LIKE 'w.vnd%';
 
 -- =====================================================
--- FLOW WORKER: pipeline report 7 hari terakhir (H-6 .. hari ini)
+-- FLOW WORKER: pipeline report 91 hari terakhir (H-90 .. hari ini)
 -- Tiap worker kerja di satu shift tetap: worker 01/04/07/10 DAY,
 -- 02/05/08 EVENING, 03/06/09 NIGHT. Tidak ada review admin:
 --   status        IN_PROGRESS -> COMPLETED (diubah worker)
@@ -332,10 +333,21 @@ WITH base AS (
     SELECT a.id AS assignment_id, a.user_id AS worker_id,
            d::date AS report_date,
            (ARRAY['DAY', 'EVENING', 'NIGHT'])[(substring(w.username FROM 10 FOR 2)::int - 1) % 3 + 1] AS shift,
-           abs(hashtext(a.id::text || d::date::text)::bigint) % 100 AS bucket
+           -- Vendor trends so SLA and maturity differ: higher bucket = worse scenario.
+           least(99, abs(hashtext(a.id::text || d::date::text)::bigint) % 100
+             + CASE substring(v.code FROM 5)::int
+                   WHEN 1 THEN 0                                  -- stable, strong
+                   WHEN 2 THEN (current_date - d::date) / 3       -- improving: older days worse
+                   WHEN 3 THEN 30 - (current_date - d::date) / 3  -- declining: recent days worse
+                   WHEN 4 THEN 15                                 -- steady, middling
+                   ELSE 25                                        -- weakest
+               END) AS bucket
     FROM pipeline_item_assignments a
     JOIN users w ON w.id = a.user_id
-    CROSS JOIN generate_series(current_date - 6, current_date, interval '1 day') AS d
+    JOIN pipeline_items pia ON pia.id = a.pipeline_item_id
+    JOIN pipelines pa ON pa.id = pia.pipeline_id
+    JOIN vendors v ON v.id = pa.vendor_id
+    CROSS JOIN generate_series(current_date - 90, current_date, interval '1 day') AS d
 ),
 planned AS (
     SELECT b.*,
@@ -511,5 +523,45 @@ JOIN user_scopes ws ON ws.user_id = w.id
 JOIN user_scopes aws ON aws.vendor_id = ws.vendor_id
 JOIN users aw ON aw.id = aws.user_id AND aw.username LIKE 'aw.%'
 LEFT JOIN inventories inv ON inv.vendor_id = ws.vendor_id AND inv.item = fixture.inventory_item;
+
+-- Sample rules: SLA monthly default per vendor, one stricter override at Paiton,
+-- maturity monthly default per vendor (default levels).
+INSERT INTO score_rules (kind, vendor_id, site_id, period_type, version, created_by, created_at)
+SELECT 'SLA', v.id, NULL, 'MONTH', 1, sa.id, now() - interval '120 days'
+FROM vendors v CROSS JOIN (SELECT id FROM users WHERE username = 'superadmin') sa;
+
+INSERT INTO score_rules (kind, vendor_id, site_id, period_type, version, created_by, created_at)
+SELECT 'SLA', v.id, s.id, 'MONTH', 1, ad.id, now() - interval '120 days'
+FROM vendors v JOIN sites s ON s.code = 'PAITON'
+JOIN users ad ON ad.username = 'admin.paiton'
+WHERE v.code = 'VND-001';
+
+INSERT INTO score_rule_items (rule_id, code, weight, target)
+SELECT r.id, x.code, x.weight, CASE WHEN r.site_id IS NULL THEN x.target ELSE x.strict END
+FROM score_rules r
+CROSS JOIN (VALUES
+    ('COMPLETION_RATE', 40, 95, 97),
+    ('ON_TIME_RATE', 40, 90, 95),
+    ('EVIDENCE_COMPLETE_RATE', 20, 98, 99)
+) AS x(code, weight, target, strict)
+WHERE r.kind = 'SLA';
+
+INSERT INTO score_rules (kind, vendor_id, site_id, period_type, version, created_by, created_at)
+SELECT 'MATURITY', v.id, NULL, 'MONTH', 1, sa.id, now() - interval '120 days'
+FROM vendors v CROSS JOIN (SELECT id FROM users WHERE username = 'superadmin') sa;
+
+INSERT INTO score_rule_items (rule_id, code, weight)
+SELECT r.id, x.code, x.weight
+FROM score_rules r
+CROSS JOIN (VALUES ('COMPLETION_RATE', 30), ('ON_TIME_RATE', 30), ('EVIDENCE_COMPLETE_RATE', 15),
+    ('LATE_UPLOAD_RATE', 10), ('CONSISTENCY', 15)) AS x(code, weight)
+WHERE r.kind = 'MATURITY';
+
+INSERT INTO score_rule_levels (rule_id, level, min_score, min_dimension, consecutive_periods)
+SELECT r.id, l.level, l.min_score, l.min_dimension, l.periods
+FROM score_rules r
+CROSS JOIN (VALUES (2, 60, 50, 1), (3, 75, 65, 2), (4, 85, 75, 3), (5, 95, 85, 3))
+    AS l(level, min_score, min_dimension, periods)
+WHERE r.kind = 'MATURITY';
 
 COMMIT;

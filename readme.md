@@ -44,17 +44,24 @@ the sample inventory, items, pipeline, or worker assignments.
 shifts, 10 PLTU sites, 5 vendors, `superadmin`, one Admin per site (`admin.<site code>`),
 one Admin Worker per vendor (`aw.*`) and 10 Workers per vendor (`w.vnd001.01` ..
 `w.vnd005.10`), all with password `Password123!`. Each vendor gets nine PLTU area pipelines
-(55 location items); each Worker is assigned every item of one area.
-It also fills the Worker flow: pipeline reports for the last 7 days (with details and status
-history), vendor inventories, and sample inventory reports.
+(55 location items) at each of its two sites; Workers 01-05 work at the vendor's first site
+and 06-10 at the second, each assigned every item of one area.
+It also fills the Worker flow: pipeline reports for the last 91 days (with details and status
+history, with a different trend per vendor), vendor inventories, sample inventory reports,
+and sample SLA/maturity rules. Task facts and frozen scores are built by the server's
+scoring job on first start.
 Use it instead of `seed.sql`/`seed_v2.sql`.
 
-For a database created from an earlier version of the current schema where
-`refresh_tokens.session_id` is missing, apply the migration:
+For a database created from an earlier version of the schema, apply the migrations in
+`ddl/migrations/`. `make db-migrate` runs all of them in order; not every migration can be
+re-run, so on a database that already has some applied, pass only the new ones:
 
 ```bash
-make db-migrate
+make db-migrate MIGRATIONS="ddl/migrations/006_pipeline_site.sql ddl/migrations/007_scoring.sql"
 ```
+
+`006_pipeline_site.sql` assigns a site to pipelines of single-site vendors and stops with a
+list of pipelines that need a site set manually.
 
 The migration invalidates any legacy refresh token that has no associated session.
 It does not convert unrelated legacy schemas; back up such a database and plan a
@@ -298,6 +305,47 @@ Error responses follow this shape:
   }
 }
 ```
+
+### SLA & maturity
+
+Super Admin and Admin configure how vendors are scored; the server turns daily task data
+into SLA scores and maturity levels per vendor, per vendor site, and per worker.
+
+- **Rules** are versioned. A vendor default (`site_id` null) is managed by Super Admin; an
+  Admin may add an override for a site in its scope, used for that site instead of the
+  default. Each change creates a new version; closed periods keep the version they used.
+- **SLA rules** pick indicators from `GET /sla-catalog` with a weight (total 100) and a target.
+  **Maturity rules** pick dimensions from `GET /maturity-catalog` with weights and level gates
+  2-5 (`min_score`, `min_dimension`, `consecutive_periods`); defaults apply when omitted.
+- **Periods** are `WEEK`, `MONTH`, or `QUARTER`. A background job (every 15 minutes, one
+  instance at a time via a PostgreSQL advisory lock) stores one fact row per task per day once
+  the day's late-upload window has closed, and freezes each finished period.
+- **Read access:** Super Admin all; Admin vendors, sites, and workers linked to its sites;
+  Admin Worker its vendors; Worker its own results.
+
+| Method & path | Purpose |
+|---|---|
+| `GET /sla-catalog`, `GET /maturity-catalog` | Available indicators / dimensions |
+| `GET /sla-rules`, `GET /maturity-rules` | Active rules (`vendor_id`, `site_id`) |
+| `GET /sla-rules/history`, `GET /maturity-rules/history` | All versions |
+| `POST /sla-rules`, `POST /maturity-rules` | Create a new version |
+| `GET`/`DELETE /sla-rules/{id}`, `/maturity-rules/{id}` | Read / deactivate a version |
+| `GET /sla-scores/live`, `GET /maturity-levels/live` | Running period (`scope`, `vendor_id`) |
+| `GET /sla-scores`, `GET /maturity-levels` | Frozen periods (`scope`, `vendor_id`, `site_id`, `worker_id`, `from`, `to`, `page`, `limit`) |
+
+```http
+POST /api/v1/sla-rules
+Content-Type: application/json
+
+{"vendor_id":"<uuid>","site_id":null,"period_type":"MONTH","indicators":[
+  {"code":"COMPLETION_RATE","weight":40,"target":95},
+  {"code":"ON_TIME_RATE","weight":40,"target":90},
+  {"code":"EVIDENCE_COMPLETE_RATE","weight":20,"target":98}]}
+```
+
+Pipelines now belong to a site: `POST /pipelines` requires `site_id`, which must be one of
+the vendor's sites (and in the caller's scope for site-scoped Admins). A site still used by
+active pipelines cannot be removed from a vendor (`409`).
 
 ## Tests and quality checks
 

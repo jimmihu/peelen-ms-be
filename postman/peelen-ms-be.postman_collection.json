@@ -91,6 +91,14 @@
     {
       "key": "item_id",
       "value": ""
+    },
+    {
+      "key": "sla_rule_id",
+      "value": ""
+    },
+    {
+      "key": "maturity_rule_id",
+      "value": ""
     }
   ],
   "item": [
@@ -1370,7 +1378,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"name\": \"Sample Pipeline\",\n  \"description\": \"Sample pipeline description\"\n}",
+              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"site_id\": \"{{site_id}}\",\n  \"name\": \"Sample Pipeline\",\n  \"description\": \"Sample pipeline description\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2418,6 +2426,498 @@
               ]
             },
             "description": "Get daily report. Filter options: date (defaults to today), site_id, vendor_id"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLA & Maturity",
+      "description": "Configurable SLA and maturity rules and their scores.",
+      "item": [
+        {
+          "name": "SLA Catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-catalog",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-catalog"
+              ]
+            },
+            "description": "Indicators usable in SLA rules."
+          }
+        },
+        {
+          "name": "Maturity Catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-catalog",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-catalog"
+              ]
+            },
+            "description": "Dimensions usable in maturity rules, plus default levels."
+          }
+        },
+        {
+          "name": "List SLA Rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-rules?",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-rules"
+              ],
+              "query": [
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Active SLA rules in the caller's scope (SUPER_ADMIN, ADMIN)."
+          }
+        },
+        {
+          "name": "SLA Rule History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-rules/history?vendor_id={{vendor_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-rules",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": false
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "All versions."
+          }
+        },
+        {
+          "name": "Create SLA Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-rules"
+              ]
+            },
+            "description": "New version replaces the active one. site_id null = vendor default (SUPER_ADMIN only); set = site override (ADMIN of that site or SUPER_ADMIN). Weights must total 100.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"site_id\": null,\n  \"period_type\": \"MONTH\",\n  \"indicators\": [\n    {\n      \"code\": \"COMPLETION_RATE\",\n      \"weight\": 40,\n      \"target\": 95\n    },\n    {\n      \"code\": \"ON_TIME_RATE\",\n      \"weight\": 40,\n      \"target\": 90\n    },\n    {\n      \"code\": \"EVIDENCE_COMPLETE_RATE\",\n      \"weight\": 20,\n      \"target\": 98\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('sla_rule_id', pm.response.json().data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get SLA Rule",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-rules/{{sla_rule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-rules",
+                "{{sla_rule_id}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Delete SLA Rule",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-rules/{{sla_rule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-rules",
+                "{{sla_rule_id}}"
+              ]
+            },
+            "description": "Deactivates; a removed site override falls back to the vendor default."
+          }
+        },
+        {
+          "name": "List Maturity Rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-rules?",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-rules"
+              ],
+              "query": [
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Create Maturity Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-rules"
+              ]
+            },
+            "description": "levels optional (defaults applied).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"site_id\": null,\n  \"period_type\": \"MONTH\",\n  \"dimensions\": [\n    {\n      \"code\": \"COMPLETION_RATE\",\n      \"weight\": 30\n    },\n    {\n      \"code\": \"ON_TIME_RATE\",\n      \"weight\": 30\n    },\n    {\n      \"code\": \"EVIDENCE_COMPLETE_RATE\",\n      \"weight\": 15\n    },\n    {\n      \"code\": \"LATE_UPLOAD_RATE\",\n      \"weight\": 10\n    },\n    {\n      \"code\": \"CONSISTENCY\",\n      \"weight\": 15\n    }\n  ],\n  \"levels\": [\n    {\n      \"level\": 2,\n      \"min_score\": 60,\n      \"min_dimension\": 50,\n      \"consecutive_periods\": 1\n    },\n    {\n      \"level\": 3,\n      \"min_score\": 75,\n      \"min_dimension\": 65,\n      \"consecutive_periods\": 2\n    },\n    {\n      \"level\": 4,\n      \"min_score\": 85,\n      \"min_dimension\": 75,\n      \"consecutive_periods\": 3\n    },\n    {\n      \"level\": 5,\n      \"min_score\": 95,\n      \"min_dimension\": 85,\n      \"consecutive_periods\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('maturity_rule_id', pm.response.json().data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Maturity Rule",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-rules/{{maturity_rule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-rules",
+                "{{maturity_rule_id}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Delete Maturity Rule",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-rules/{{maturity_rule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-rules",
+                "{{maturity_rule_id}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Live SLA Scores",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-scores/live?scope=VENDOR",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-scores",
+                "live"
+              ],
+              "query": [
+                {
+                  "key": "scope",
+                  "value": "VENDOR",
+                  "disabled": false
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Running period, computed live. scope: VENDOR | SITE | WORKER."
+          }
+        },
+        {
+          "name": "SLA Score History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sla-scores?scope=VENDOR",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sla-scores"
+              ],
+              "query": [
+                {
+                  "key": "scope",
+                  "value": "VENDOR",
+                  "disabled": false
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "worker_id",
+                  "value": "{{user_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Frozen results of closed periods."
+          }
+        },
+        {
+          "name": "Live Maturity Levels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-levels/live?scope=VENDOR",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-levels",
+                "live"
+              ],
+              "query": [
+                {
+                  "key": "scope",
+                  "value": "VENDOR",
+                  "disabled": false
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Maturity Level History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/maturity-levels?scope=VENDOR",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "maturity-levels"
+              ],
+              "query": [
+                {
+                  "key": "scope",
+                  "value": "VENDOR",
+                  "disabled": false
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "worker_id",
+                  "value": "{{user_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
           }
         }
       ]
