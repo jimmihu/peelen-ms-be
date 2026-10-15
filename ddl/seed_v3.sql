@@ -4,7 +4,7 @@
 -- lalu mengisi ulang: master role & shift, 10 PLTU, 5 vendor, superadmin,
 -- 1 admin per PLTU, 1 admin worker per vendor, 10 worker per vendor,
 -- 9 pipeline area (55 item lokasi) per site vendor, assignment task tiap worker,
--- pipeline report 91 hari terakhir (detail + history, tanpa review admin),
+-- pipeline report sejak awal kuartal lalu (detail + history, tanpa review admin),
 -- (aturan SLA & maturity: seed_scoring.sql; fakta & snapshot: job server / make scoring-backfill),
 -- inventory dan laporannya.
 -- Password semua user: Password123!
@@ -135,6 +135,11 @@ SELECT 'admin.' || lower(s.code), crypt('Password123!', gen_salt('bf', 10)),
        'Admin ' || s.name, '0812100000' || lpad(row_number() OVER (ORDER BY s.code)::text, 2, '0'), false
 FROM sites s;
 
+-- Admin regional: satu admin memegang 2 site (Paiton & Suralaya) untuk uji akses lintas vendor
+INSERT INTO users (username, password_hash, full_name, phone, must_change_password)
+VALUES ('admin.regional', crypt('Password123!', gen_salt('bf', 10)), 'Admin Regional Jawa Timur-Banten',
+        '081210000099', false);
+
 -- Admin worker: 1 per vendor
 INSERT INTO users (username, password_hash, full_name, phone, must_change_password) VALUES
     ('aw.mitra',   crypt('Password123!', gen_salt('bf', 10)), 'Rudi Hartono',   '081220000001', false),
@@ -178,6 +183,13 @@ INSERT INTO user_scopes (user_id, site_id)
 SELECT u.id, s.id
 FROM sites s
 JOIN users u ON u.username = 'admin.' || lower(s.code);
+
+-- ADMIN regional -> 2 site
+INSERT INTO user_scopes (user_id, site_id)
+SELECT u.id, s.id
+FROM users u
+JOIN sites s ON s.code IN ('PAITON', 'SURALAYA')
+WHERE u.username = 'admin.regional';
 
 -- ADMIN_WORKER -> vendor
 INSERT INTO user_scopes (user_id, vendor_id)
@@ -301,7 +313,7 @@ numbered_pipelines AS (
     JOIN vendor_site_no vsn ON vsn.vendor_id = p.vendor_id AND vsn.site_id = p.site_id
 )
 INSERT INTO pipeline_item_assignments (pipeline_item_id, user_id, assigned_by, created_at, updated_at)
-SELECT pi.id, w.id, np.created_by, current_date - 100, current_date - 100
+SELECT pi.id, w.id, np.created_by, (date_trunc('quarter', current_date) - interval '3 months')::date, (date_trunc('quarter', current_date) - interval '3 months')::date
 FROM users w
 JOIN user_scopes ws ON ws.user_id = w.id
 JOIN numbered_pipelines np ON np.vendor_id = ws.vendor_id
@@ -311,7 +323,7 @@ JOIN pipeline_items pi ON pi.pipeline_id = np.id
 WHERE w.username LIKE 'w.vnd%';
 
 -- =====================================================
--- FLOW WORKER: pipeline report 91 hari terakhir (H-90 .. hari ini)
+-- FLOW WORKER: pipeline report dari awal kuartal lalu sampai hari ini
 -- Tiap worker kerja di satu shift tetap: worker 01/04/07/10 DAY,
 -- 02/05/08 EVENING, 03/06/09 NIGHT. Tidak ada review admin:
 --   status        IN_PROGRESS -> COMPLETED (diubah worker)
@@ -327,32 +339,43 @@ WHERE w.username LIKE 'w.vnd%';
 --                     4% LATE_WORK    pekerjaan selesai lewat jam shift
 --                     4% NOT_FINISHED report dibuat tapi tidak diselesaikan
 --                     5% tidak lapor
---   hari ini       : 30% ON_TIME, 20% NOT_FINISHED (masih berjalan), 50% belum lapor
+--   hari ini       : shift yang sudah selesai = seperti hari sebelumnya;
+--                    shift yang masih berjalan = 40% ON_TIME, 30% NOT_FINISHED, 30% belum lapor
 -- =====================================================
 CREATE TEMP TABLE report_plan ON COMMIT DROP AS
 WITH base AS (
     SELECT a.id AS assignment_id, a.user_id AS worker_id,
            d::date AS report_date,
            (ARRAY['DAY', 'EVENING', 'NIGHT'])[(substring(w.username FROM 10 FOR 2)::int - 1) % 3 + 1] AS shift,
-           -- Vendor trends so SLA and maturity differ: higher bucket = worse scenario.
-           least(99, abs(hashtext(a.id::text || d::date::text)::bigint) % 100
+           -- Profil vendor supaya SLA & maturity bervariasi (bucket makin besar = makin buruk):
+           --   VND-001 sangat baik (SLA tercapai), VND-004 sekitar target, VND-002 membaik,
+           --   VND-003 memburuk, VND-005 lemah. Tanpa offset: ~91% selesai, ~87% tepat waktu.
+           -- Deterministik: sama untuk worker, area, item, dan tanggal yang sama di setiap reset.
+           greatest(0, least(99, abs(hashtext(w.username || '|' || pa.name || '|' || pia.sort_order::text
+                                             || '|' || d::date::text)::bigint) % 100
              + CASE substring(v.code FROM 5)::int
-                   WHEN 1 THEN 0                                  -- stable, strong
-                   WHEN 2 THEN (current_date - d::date) / 3       -- improving: older days worse
-                   WHEN 3 THEN 30 - (current_date - d::date) / 3  -- declining: recent days worse
-                   WHEN 4 THEN 15                                 -- steady, middling
-                   ELSE 25                                        -- weakest
-               END) AS bucket
+                   WHEN 1 THEN -12                                              -- sangat baik
+                   WHEN 2 THEN least(25, (current_date - d::date) / 4) - 10     -- membaik
+                   WHEN 3 THEN 15 - least(25, (current_date - d::date) / 4)     -- memburuk
+                   WHEN 4 THEN -4                                               -- sekitar target
+                   ELSE 18                                                      -- lemah
+               END)) AS bucket
     FROM pipeline_item_assignments a
     JOIN users w ON w.id = a.user_id
     JOIN pipeline_items pia ON pia.id = a.pipeline_item_id
     JOIN pipelines pa ON pa.id = pia.pipeline_id
     JOIN vendors v ON v.id = pa.vendor_id
-    CROSS JOIN generate_series(current_date - 90, current_date, interval '1 day') AS d
+    -- Dari awal kuartal lalu sampai hari ini: ada minggu, bulan, dan 1 kuartal penuh yang sudah selesai.
+    CROSS JOIN generate_series((date_trunc('quarter', current_date) - interval '3 months')::date, current_date, interval '1 day') AS d
 ),
 planned AS (
+    -- Hari sebelumnya dan shift hari ini yang sudah selesai saat seed dijalankan dianggap
+    -- hari kerja normal; hanya shift hari ini yang masih berjalan yang belum banyak lapor.
     SELECT b.*,
-           CASE WHEN b.report_date < current_date THEN
+           CASE WHEN b.report_date < current_date OR (
+                    (b.report_date + sh.end_time)
+                      + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END
+                ) <= localtimestamp THEN
                CASE WHEN b.bucket < 65 THEN 'ON_TIME'
                     WHEN b.bucket < 73 THEN 'LATE_UPLOAD'
                     WHEN b.bucket < 80 THEN 'PARTIAL_LATE'
@@ -361,11 +384,12 @@ planned AS (
                     WHEN b.bucket < 95 THEN 'NOT_FINISHED'
                END
            ELSE
-               CASE WHEN b.bucket < 30 THEN 'ON_TIME'
-                    WHEN b.bucket < 50 THEN 'NOT_FINISHED'
+               CASE WHEN b.bucket < 40 THEN 'ON_TIME'
+                    WHEN b.bucket < 70 THEN 'NOT_FINISHED'
                END
            END AS scenario
     FROM base b
+    JOIN shifts sh ON sh.shift = b.shift
 )
 SELECT p.*,
        (p.report_date + sh.start_time)::timestamptz AS started_at,
