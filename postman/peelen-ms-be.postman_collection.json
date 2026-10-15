@@ -1,9 +1,106 @@
 {
   "info": {
+    "_postman_id": "aad92575-922b-4269-ad46-159b10bf26bc",
     "name": "peelen-ms-be",
-    "description": "Semua endpoint peelen-ms-be. Jalankan Auth > Login dulu: access_token dan refresh_token otomatis disimpan ke variabel collection. Create User otomatis menyimpan user_id.",
+    "description": "Semua endpoint peelen-ms-be.\n\n**Cara Pakai:**\n1. Jalankan Auth > Login dulu\n2. access_token otomatis disimpan ke variabel collection\n3. refresh_token dikirim sebagai HTTP-only cookie (otomatis di-handle Postman)\n4. Refresh dan Logout endpoint akan otomatis menggunakan cookie tersebut\n\n**Catatan:** Pastikan Settings > Cookies > Automatically follow redirects diaktifkan.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// GIN_MODE=release menolak HTTP polos kecuali lewat proxy TLS tepercaya.",
+          "pm.request.headers.upsert({ key: 'X-Forwarded-Proto', value: 'https' });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://103.150.226.7:8082"
+    },
+    {
+      "key": "username",
+      "value": "superadmin"
+    },
+    {
+      "key": "password",
+      "value": "Password123!"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "site_id",
+      "value": ""
+    },
+    {
+      "key": "vendor_id",
+      "value": ""
+    },
+    {
+      "key": "shift",
+      "value": ""
+    },
+    {
+      "key": "pipeline_id",
+      "value": ""
+    },
+    {
+      "key": "pipeline_item_id",
+      "value": ""
+    },
+    {
+      "key": "pipeline_report_id",
+      "value": ""
+    },
+    {
+      "key": "inventory_id",
+      "value": ""
+    },
+    {
+      "key": "inventory_report_id",
+      "value": ""
+    },
+    {
+      "key": "policy_id",
+      "value": ""
+    },
+    {
+      "key": "item_id",
+      "value": ""
+    },
+    {
+      "key": "assignment_id",
+      "value": ""
+    },
+    {
+      "key": "sla_rule_id",
+      "value": ""
+    },
+    {
+      "key": "maturity_rule_id",
+      "value": ""
+    }
+  ],
   "item": [
     {
       "name": "Health",
@@ -18,6 +115,9 @@
           "path": [
             "health"
           ]
+        },
+        "auth": {
+          "type": "noauth"
         }
       }
     },
@@ -54,6 +154,9 @@
                   "language": "json"
                 }
               }
+            },
+            "auth": {
+              "type": "noauth"
             }
           },
           "event": [
@@ -65,8 +168,8 @@
                   "if (pm.response.code === 200) {",
                   "  const body = pm.response.json();",
                   "  pm.collectionVariables.set('access_token', body.access_token);",
-                  "  const rt = pm.cookies.get('refresh_token');",
-                  "  if (rt) pm.collectionVariables.set('refresh_token', rt);",
+                  "  // refresh_token dikirim sebagai HTTP-only cookie, otomatis di-handle Postman",
+                  "  pm.collectionVariables.set('user_id', body.user.id);",
                   "}"
                 ]
               }
@@ -77,12 +180,7 @@
           "name": "Refresh",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/refresh",
               "host": [
@@ -95,16 +193,10 @@
                 "refresh"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+            "auth": {
+              "type": "noauth"
             },
-            "description": "Refresh token sekali pakai: setiap refresh menghasilkan token baru (otomatis disimpan). Memakai token lama lagi akan mencabut semua sesi."
+            "description": "Refresh token diambil dari HTTP-only cookie (otomatis dikirim Postman). Setiap refresh menghasilkan token baru. Memakai token lama lagi akan mencabut semua sesi."
           },
           "event": [
             {
@@ -115,8 +207,8 @@
                   "if (pm.response.code === 200) {",
                   "  const body = pm.response.json();",
                   "  pm.collectionVariables.set('access_token', body.access_token);",
-                  "  const rt = pm.cookies.get('refresh_token');",
-                  "  if (rt) pm.collectionVariables.set('refresh_token', rt);",
+                  "  // refresh_token dikirim sebagai HTTP-only cookie, otomatis di-handle Postman",
+                  "  pm.collectionVariables.set('user_id', body.user.id);",
                   "}"
                 ]
               }
@@ -179,12 +271,7 @@
           "name": "Logout",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/auth/logout",
               "host": [
@@ -197,15 +284,7 @@
                 "logout"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Logout current session. Refresh token diambil dari HTTP-only cookie."
           }
         },
         {
@@ -231,6 +310,7 @@
     },
     {
       "name": "Users",
+      "description": "Butuh role SUPER_ADMIN atau ADMIN_WORKER. Roles, scopes, dan sessions hanya SUPER_ADMIN.",
       "item": [
         {
           "name": "List Users",
@@ -479,6 +559,7 @@
     },
     {
       "name": "Admin",
+      "description": "SUPER_ADMIN saja.",
       "item": [
         {
           "name": "List Roles",
@@ -516,7 +597,33 @@
               "query": [
                 {
                   "key": "limit",
-                  "value": "100"
+                  "value": "100",
+                  "disabled": false
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "entity",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2026-10-01T00:00:00Z",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-10-31T23:59:59Z",
+                  "disabled": true
                 }
               ]
             },
@@ -527,6 +634,7 @@
     },
     {
       "name": "Sites",
+      "description": "Manajemen site/lokasi.",
       "item": [
         {
           "name": "List Sites",
@@ -666,6 +774,7 @@
     },
     {
       "name": "Vendors",
+      "description": "Manajemen vendor.",
       "item": [
         {
           "name": "List Vendors",
@@ -805,6 +914,7 @@
     },
     {
       "name": "Shifts",
+      "description": "Manajemen shift kerja.",
       "item": [
         {
           "name": "List Shifts",
@@ -943,7 +1053,8 @@
       ]
     },
     {
-      "name": "MyTasks",
+      "name": "My Tasks",
+      "description": "Task yang di-assign ke user yang sedang login.",
       "item": [
         {
           "name": "My Tasks",
@@ -976,6 +1087,7 @@
     },
     {
       "name": "Items",
+      "description": "Manajemen item checklist.",
       "item": [
         {
           "name": "List Items",
@@ -1146,6 +1258,7 @@
     },
     {
       "name": "Pipelines",
+      "description": "Manajemen pipeline dan pipeline items.",
       "item": [
         {
           "name": "List Pipelines",
@@ -1400,7 +1513,8 @@
       ]
     },
     {
-      "name": "PipelineItems",
+      "name": "Pipeline Items",
+      "description": "Manajemen individual pipeline item.",
       "item": [
         {
           "name": "Get Pipeline Item",
@@ -1634,7 +1748,8 @@
       "description": "Penugasan WORKER ke pipeline item (shift dipilih per report). Hanya ADMIN_WORKER yang bisa membuat/mengubah, untuk vendornya sendiri. SUPER_ADMIN dan ADMIN hanya bisa melihat dalam scope; WORKER hanya melihat penugasannya sendiri."
     },
     {
-      "name": "PipelineReports",
+      "name": "Pipeline Reports",
+      "description": "Laporan pipeline harian.",
       "item": [
         {
           "name": "List Pipeline Reports",
@@ -1930,6 +2045,7 @@
     },
     {
       "name": "Inventories",
+      "description": "Manajemen inventory dengan upload gambar.",
       "item": [
         {
           "name": "List Inventories",
@@ -2025,33 +2141,33 @@
               "formdata": [
                 {
                   "key": "vendor_id",
-                  "type": "text",
-                  "value": "{{vendor_id}}"
+                  "value": "{{vendor_id}}",
+                  "type": "text"
                 },
                 {
                   "key": "item",
-                  "type": "text",
-                  "value": "Sample Item"
+                  "value": "Sample Item",
+                  "type": "text"
                 },
                 {
                   "key": "jenis_item",
-                  "type": "text",
-                  "value": "Equipment"
+                  "value": "Equipment",
+                  "type": "text"
                 },
                 {
                   "key": "qty",
-                  "type": "text",
-                  "value": "10"
+                  "value": "10",
+                  "type": "text"
                 },
                 {
                   "key": "status_condition",
-                  "type": "text",
-                  "value": "GOOD"
+                  "value": "GOOD",
+                  "type": "text"
                 },
                 {
                   "key": "image",
                   "type": "file",
-                  "src": [],
+                  "src": "",
                   "disabled": true
                 }
               ]
@@ -2094,23 +2210,23 @@
               "formdata": [
                 {
                   "key": "qty",
-                  "type": "text",
-                  "value": "15"
+                  "value": "15",
+                  "type": "text"
                 },
                 {
                   "key": "status_condition",
-                  "type": "text",
-                  "value": "GOOD"
+                  "value": "GOOD",
+                  "type": "text"
                 },
                 {
                   "key": "status",
-                  "type": "text",
-                  "value": "ACTIVE"
+                  "value": "ACTIVE",
+                  "type": "text"
                 },
                 {
                   "key": "image",
                   "type": "file",
-                  "src": [],
+                  "src": "",
                   "disabled": true
                 }
               ]
@@ -2140,7 +2256,8 @@
       ]
     },
     {
-      "name": "InventoryReports",
+      "name": "Inventory Reports",
+      "description": "Laporan inventory (damage, loss, dll).",
       "item": [
         {
           "name": "List Inventory Reports",
@@ -2299,6 +2416,7 @@
     },
     {
       "name": "Policies",
+      "description": "Manajemen policy dengan upload PDF.",
       "item": [
         {
           "name": "List Policies",
@@ -2410,18 +2528,18 @@
               "formdata": [
                 {
                   "key": "vendor_id",
-                  "type": "text",
-                  "value": "{{vendor_id}}"
+                  "value": "{{vendor_id}}",
+                  "type": "text"
                 },
                 {
                   "key": "name",
-                  "type": "text",
-                  "value": "Sample Policy"
+                  "value": "Sample Policy",
+                  "type": "text"
                 },
                 {
                   "key": "file",
                   "type": "file",
-                  "src": []
+                  "src": ""
                 }
               ]
             },
@@ -2463,18 +2581,18 @@
               "formdata": [
                 {
                   "key": "name",
-                  "type": "text",
-                  "value": "Updated Policy Name"
+                  "value": "Updated Policy Name",
+                  "type": "text"
                 },
                 {
                   "key": "status",
-                  "type": "text",
-                  "value": "ACTIVE"
+                  "value": "ACTIVE",
+                  "type": "text"
                 },
                 {
                   "key": "file",
                   "type": "file",
-                  "src": [],
+                  "src": "",
                   "disabled": true
                 }
               ]
@@ -2505,6 +2623,7 @@
     },
     {
       "name": "Dashboard",
+      "description": "Dashboard dan laporan harian.",
       "item": [
         {
           "name": "Dashboard Report",
@@ -2579,11 +2698,48 @@
             },
             "description": "Get daily report. Filter options: date (defaults to today), site_id, vendor_id. Per pipeline: task_count, report_count, completed_count, in_progress_count, late_upload_count."
           }
+        },
+        {
+          "name": "Get Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "site_id",
+                  "value": "{{site_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "{{vendor_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get dashboard summary. Filter options: date (defaults to today), site_id, vendor_id. If site_id or vendor_id is empty, data is retrieved for all sites or vendors within the user's access scope."
+          }
         }
       ]
     },
     {
-      "name": "SLAMaturity",
+      "name": "SLA & Maturity",
       "item": [
         {
           "name": "SLA Catalog",
@@ -3121,90 +3277,6 @@
         }
       ],
       "description": "Aturan SLA & maturity berversi (default per vendor oleh SUPER_ADMIN, override per site oleh ADMIN site tsb) dan skornya. Skor periode yang sudah selesai dibekukan oleh job server (atau make scoring-backfill); /live menghitung periode berjalan. scope: VENDOR | SITE | WORKER."
-    }
-  ],
-  "variable": [
-    {
-      "key": "base_url",
-      "value": "http://103.150.226.7:8082"
-    },
-    {
-      "key": "username",
-      "value": "superadmin"
-    },
-    {
-      "key": "password",
-      "value": ""
-    },
-    {
-      "key": "access_token",
-      "value": ""
-    },
-    {
-      "key": "refresh_token",
-      "value": ""
-    },
-    {
-      "key": "user_id",
-      "value": ""
-    },
-    {
-      "key": "site_id",
-      "value": ""
-    },
-    {
-      "key": "vendor_id",
-      "value": ""
-    },
-    {
-      "key": "pipeline_item_id",
-      "value": ""
-    },
-    {
-      "key": "assignment_id",
-      "value": ""
-    },
-    {
-      "key": "pipeline_id",
-      "value": ""
-    },
-    {
-      "key": "pipeline_report_id",
-      "value": ""
-    },
-    {
-      "key": "shift",
-      "value": ""
-    },
-    {
-      "key": "sla_rule_id",
-      "value": ""
-    },
-    {
-      "key": "maturity_rule_id",
-      "value": ""
-    }
-  ],
-  "auth": {
-    "type": "bearer",
-    "bearer": [
-      {
-        "key": "token",
-        "value": "{{access_token}}",
-        "type": "string"
-      }
-    ]
-  },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// GIN_MODE=release menolak HTTP polos kecuali lewat proxy TLS tepercaya.",
-          "pm.request.headers.upsert({ key: 'X-Forwarded-Proto', value: 'https' });"
-        ]
-      }
     }
   ]
 }

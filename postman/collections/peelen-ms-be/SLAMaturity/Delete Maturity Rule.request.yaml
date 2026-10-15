@@ -1,5 +1,0 @@
-$kind: http-request
-description: "Menonaktifkan aturan maturity."
-url: "{{base_url}}/api/v1/maturity-rules/{{maturity_rule_id}}"
-method: DELETE
-order: 12000

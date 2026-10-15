@@ -74,7 +74,7 @@ func main() {
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, authUsecaseConfig)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authUsecase)
+	authHandler := handler.NewAuthHandler(authUsecase, cfg.Server.SecureCookie)
 	adminRepository := postgres.NewAdminRepository(db)
 	adminUsecase := usecase.NewAdminUsecase(adminRepository, cfg.Auth.BcryptCost)
 	adminHandler := handler.NewAdminHandler(adminUsecase)
@@ -102,6 +102,10 @@ func main() {
 	defer stopJobs()
 	jobs.StartScoringJob(jobCtx, scoringUsecase, 15*time.Minute)
 
+	dashboardRepository := postgres.NewDashboardRepository(db)
+	dashboardUsecase := usecase.NewDashboardUsecase(dashboardRepository)
+	dashboardHandler := handler.NewDashboardHandler(dashboardUsecase)
+
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
 
@@ -113,6 +117,7 @@ func main() {
 		WorkflowHandler:    workflowHandler,
 		AssignmentHandler:  assignmentHandler,
 		ScoringHandler:     scoringHandler,
+		DashboardHandler:   dashboardHandler,
 		AuthMiddleware:     authMiddleware,
 		EnforceHTTPS:       cfg.Server.Mode == "release",
 		TrustedProxyCIDRs:  cfg.Server.TrustedProxyCIDRs,

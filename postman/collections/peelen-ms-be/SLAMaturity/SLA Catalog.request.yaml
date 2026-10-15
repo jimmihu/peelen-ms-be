@@ -1,5 +1,0 @@
-$kind: http-request
-description: "Indikator yang bisa dipakai di aturan SLA."
-url: "{{base_url}}/api/v1/sla-catalog"
-method: GET
-order: 1000

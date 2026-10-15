@@ -1,5 +1,0 @@
-$kind: http-request
-description: "Dimensi maturity dan syarat level default."
-url: "{{base_url}}/api/v1/maturity-catalog"
-method: GET
-order: 2000

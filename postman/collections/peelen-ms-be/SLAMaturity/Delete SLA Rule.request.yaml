@@ -1,5 +1,0 @@
-$kind: http-request
-description: "Menonaktifkan aturan; override site yang dihapus kembali memakai default vendor."
-url: "{{base_url}}/api/v1/sla-rules/{{sla_rule_id}}"
-method: DELETE
-order: 7000

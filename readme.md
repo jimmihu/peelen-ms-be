@@ -106,10 +106,7 @@ All endpoints use the `/api/v1` prefix.
 To try the API, import [postman/peelen-ms-be.postman_collection.json](postman/peelen-ms-be.postman_collection.json)
 into Postman together with an environment from `postman/*.postman_environment.json`. Run
 Auth > Login first, then set valid vendor/site IDs in the collection variables.
-
-The JSON file is generated: edit the YAML source in
-[postman/collections/peelen-ms-be](postman/collections/peelen-ms-be) (one file per request)
-and regenerate it with `make postman-export` (needs Python 3 with PyYAML).
+`postman/peelen-ms-be-tests.postman_collection.json` holds request tests per endpoint.
 
 | Method | Path | Access |
 |---|---|---|

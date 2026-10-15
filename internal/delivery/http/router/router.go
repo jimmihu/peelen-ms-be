@@ -15,6 +15,7 @@ type Config struct {
 	WorkflowHandler    *handler.WorkflowHandler
 	AssignmentHandler  *handler.AssignmentHandler
 	ScoringHandler     *handler.ScoringHandler
+	DashboardHandler   *handler.DashboardHandler
 	AuthMiddleware     *middleware.AuthMiddleware
 	EnforceHTTPS       bool
 	TrustedProxyCIDRs  []string
@@ -160,6 +161,8 @@ func NewRouter(cfg Config) *gin.Engine {
 		operations.GET(kind.results+"/live", cfg.ScoringHandler.Live(kind.code))
 		operations.GET(kind.results, cfg.ScoringHandler.History(kind.code))
 	}
+
+	operations.GET("/dashboard/summary", cfg.DashboardHandler.GetDashboard)
 
 	return router
 }

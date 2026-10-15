@@ -1,4 +1,0 @@
-$kind: http-request
-url: "{{base_url}}/api/v1/sla-rules/{{sla_rule_id}}"
-method: GET
-order: 6000
