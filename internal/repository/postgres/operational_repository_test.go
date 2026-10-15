@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	_ "github.com/lib/pq"
@@ -126,7 +127,7 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 		t.Fatalf("admin creating a pipeline at a site outside its scope: err = %v, want ErrNotFound", err)
 	}
 	// UAT regression: a site admin updates, extends, and deactivates a pipeline
-	// at its own site (all returned 404 before the pipelineWriteScope fix).
+	// at its own site (all returned 404 before the pipelineSiteScope fix).
 	ownPipeline, err := repo.CreateOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalInput{
 		VendorID: &vendorID, SiteID: &siteID, Name: stringPtr("Admin own area"),
 	}, "")
@@ -163,6 +164,15 @@ func TestOperationalRepositoryCRUDAndWorkerScopes(t *testing.T) {
 	}, "")
 	if err != nil {
 		t.Fatalf("super admin creating a pipeline at the second site: %v", err)
+	}
+	visible, _, err := repo.ListOperational(ctx, adminAccess, entity.ResourcePipeline, entity.OperationalFilter{Page: 1, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range visible {
+		if p.ID == foreignPipeline.ID {
+			t.Fatalf("site admin can see a pipeline at another site of the same vendor")
+		}
 	}
 	if _, err := repo.UpdateOperational(ctx, adminAccess, entity.ResourcePipeline, foreignPipeline.ID,
 		entity.OperationalInput{Name: stringPtr("Renamed by another site's admin")}, ""); !errors.Is(err, repository.ErrNotFound) {
@@ -258,9 +268,25 @@ func stringPtr(value string) *string {
 }
 
 func TestPipelineWriteScopeUsesSiteParameter(t *testing.T) {
-	got := pipelineWriteScope("p", 6)
+	got := pipelineSiteScope("p", 6)
 	want := `($6::boolean OR p.vendor_id = ANY($7::uuid[]) OR p.site_id = ANY($8::uuid[]))`
 	if got != want {
-		t.Fatalf("pipelineWriteScope = %s\nwant %s", got, want)
+		t.Fatalf("pipelineSiteScope = %s\nwant %s", got, want)
+	}
+}
+
+func TestSiteAdminReadsOnlyPipelinesAtItsSites(t *testing.T) {
+	admin := entity.OperationalAccess{UserID: "a", Roles: []string{"ADMIN"}, SiteIDs: []string{"s"}}
+	for resource, want := range map[entity.OperationalResource]string{
+		entity.ResourcePipeline:     "t.site_id = ANY($3::uuid[])",
+		entity.ResourcePipelineItem: "p.site_id = ANY($3::uuid[])",
+	} {
+		_, _, scope, _, err := operationalQuery(resource, admin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(scope, want) {
+			t.Errorf("%s read scope does not limit site admins to their sites:\n%s", resource, scope)
+		}
 	}
 }
