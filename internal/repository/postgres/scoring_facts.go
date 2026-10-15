@@ -147,7 +147,8 @@ func (r *ScoringRepositoryImpl) AggregateFacts(ctx context.Context, q entity.Fac
 				live.completed, live.on_time, live.late_minutes, live.late_upload, live.evidence_complete,
 				live.k3_finding, live.k3_finding_with_notes
 			FROM (` + taskDayFactsSQL(1, 2) + `) live, last_final
-			WHERE live.report_date > last_final.day
+			-- Live facts stop at today: future days of a running period have no tasks yet.
+			WHERE live.report_date > last_final.day AND live.report_date <= current_date
 		),
 		scoped AS (
 			SELECT * FROM facts

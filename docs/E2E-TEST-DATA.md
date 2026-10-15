@@ -108,7 +108,17 @@ Periode yang sudah dibekukan setelah `make scoring-backfill` (contoh reset 15 Ok
 
 Minggu pertama (29 Jun – 5 Jul) hanya berisi data 1–5 Juli karena penugasan dimulai 1 Juli.
 
-Tren per vendor (dibuat sengaja agar skor berbeda): VND-001 stabil baik, VND-002 membaik, VND-003 menurun, VND-004 sedang, VND-005 paling lemah.
+Profil per vendor (sengaja dibuat berbeda supaya hasilnya bervariasi):
+
+| Vendor | Profil | Perkiraan hasil periode yang sudah ditutup |
+|---|---|---|
+| VND-001 | Sangat baik (~100% selesai, ~99% tepat waktu) | SLA tercapai, termasuk aturan ketat di PAITON; maturity tinggi |
+| VND-004 | Sekitar target (~94% selesai, ~90% tepat waktu) | Sebagian bulan tercapai, sebagian tidak |
+| VND-002 | Membaik | Minggu-minggu awal tidak tercapai, minggu terakhir tercapai; level maturity naik |
+| VND-003 | Memburuk | Awal kuartal baik, akhir kuartal buruk; Q3 tidak tercapai (upload susulan > 10%) |
+| VND-005 | Lemah (~75% selesai) | Selalu tidak tercapai; maturity rendah |
+
+Skor live periode berjalan hanya menghitung hari sampai hari ini. Task hari ini dari shift yang sudah selesai saat seed dijalankan dihitung seperti hari biasa; shift yang masih berjalan sebagian besar belum lapor, jadi skor live sedikit lebih rendah dari hasil periode yang sudah ditutup.
 
 ## 4. Skenario uji per role
 

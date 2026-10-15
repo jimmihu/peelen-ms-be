@@ -466,23 +466,26 @@ WHERE w.username LIKE 'w.vnd%';
 --                     4% LATE_WORK    pekerjaan selesai lewat jam shift
 --                     4% NOT_FINISHED report dibuat tapi tidak diselesaikan
 --                     5% tidak lapor
---   hari ini       : 30% ON_TIME, 20% NOT_FINISHED (masih berjalan), 50% belum lapor
+--   hari ini       : shift yang sudah selesai = seperti hari sebelumnya;
+--                    shift yang masih berjalan = 40% ON_TIME, 30% NOT_FINISHED, 30% belum lapor
 -- =====================================================
 CREATE TEMP TABLE report_plan ON COMMIT DROP AS
 WITH base AS (
     SELECT a.id AS assignment_id, a.user_id AS worker_id,
            d::date AS report_date,
            (ARRAY['DAY', 'EVENING', 'NIGHT'])[(substring(w.username FROM 10 FOR 2)::int - 1) % 3 + 1] AS shift,
-           -- Vendor trends so SLA and maturity differ: higher bucket = worse scenario.
+           -- Profil vendor supaya SLA & maturity bervariasi (bucket makin besar = makin buruk):
+           --   VND-001 sangat baik (SLA tercapai), VND-004 sekitar target, VND-002 membaik,
+           --   VND-003 memburuk, VND-005 lemah. Tanpa offset: ~91% selesai, ~87% tepat waktu.
            -- Deterministik: sama untuk worker, area, item, dan tanggal yang sama di setiap reset.
            greatest(0, least(99, abs(hashtext(w.username || '|' || pa.name || '|' || pia.sort_order::text
                                              || '|' || d::date::text)::bigint) % 100
              + CASE substring(v.code FROM 5)::int
-                   WHEN 1 THEN 0                                  -- stable, strong
-                   WHEN 2 THEN (current_date - d::date) / 3       -- improving: older days worse
-                   WHEN 3 THEN 30 - (current_date - d::date) / 3  -- declining: recent days worse
-                   WHEN 4 THEN 15                                 -- steady, middling
-                   ELSE 25                                        -- weakest
+                   WHEN 1 THEN -12                                              -- sangat baik
+                   WHEN 2 THEN least(25, (current_date - d::date) / 4) - 10     -- membaik
+                   WHEN 3 THEN 15 - least(25, (current_date - d::date) / 4)     -- memburuk
+                   WHEN 4 THEN -4                                               -- sekitar target
+                   ELSE 18                                                      -- lemah
                END)) AS bucket
     FROM pipeline_item_assignments a
     JOIN users w ON w.id = a.user_id
@@ -493,8 +496,13 @@ WITH base AS (
     CROSS JOIN generate_series((date_trunc('quarter', current_date) - interval '3 months')::date, current_date, interval '1 day') AS d
 ),
 planned AS (
+    -- Hari sebelumnya dan shift hari ini yang sudah selesai saat seed dijalankan dianggap
+    -- hari kerja normal; hanya shift hari ini yang masih berjalan yang belum banyak lapor.
     SELECT b.*,
-           CASE WHEN b.report_date < current_date THEN
+           CASE WHEN b.report_date < current_date OR (
+                    (b.report_date + sh.end_time)
+                      + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END
+                ) <= localtimestamp THEN
                CASE WHEN b.bucket < 65 THEN 'ON_TIME'
                     WHEN b.bucket < 73 THEN 'LATE_UPLOAD'
                     WHEN b.bucket < 80 THEN 'PARTIAL_LATE'
@@ -503,11 +511,12 @@ planned AS (
                     WHEN b.bucket < 95 THEN 'NOT_FINISHED'
                END
            ELSE
-               CASE WHEN b.bucket < 30 THEN 'ON_TIME'
-                    WHEN b.bucket < 50 THEN 'NOT_FINISHED'
+               CASE WHEN b.bucket < 40 THEN 'ON_TIME'
+                    WHEN b.bucket < 70 THEN 'NOT_FINISHED'
                END
            END AS scenario
     FROM base b
+    JOIN shifts sh ON sh.shift = b.shift
 )
 SELECT p.*,
        (p.report_date + sh.start_time)::timestamptz AS started_at,

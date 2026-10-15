@@ -174,6 +174,19 @@ func TestFactsEveningShiftAndMissingReport(t *testing.T) {
 		t.Fatalf("second finalize inserted %d (err %v), want 0", n, err)
 	}
 
+	// Days after today are not tasks yet: a period ending in the future counts
+	// only up to today.
+	future, err := repo.AggregateFacts(ctx, entity.FactQuery{
+		Scope: entity.ScopeVendor, VendorID: f.vendorID,
+		From: time.Now().AddDate(0, 0, -5), To: time.Now().AddDate(0, 0, 3),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(future) != 1 || future[0].Counts.Tasks != 6 {
+		t.Fatalf("aggregate into the future = %+v, want 6 tasks (no future days)", future)
+	}
+
 	// Aggregate (vendor scope) covers final facts and live days up to today.
 	counts, err := repo.AggregateFacts(ctx, entity.FactQuery{
 		Scope: entity.ScopeVendor, VendorID: f.vendorID,
