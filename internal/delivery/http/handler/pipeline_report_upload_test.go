@@ -34,6 +34,7 @@ func (f *reportUsecaseFake) CreatePipelineReport(_ context.Context, _ *entity.Us
 type objectStorageFake struct {
 	uploaded []string
 	deleted  []string
+	signed   []string
 }
 
 func (s *objectStorageFake) Upload(_ context.Context, key, _ string, _ []byte) error {
@@ -46,8 +47,9 @@ func (s *objectStorageFake) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (s *objectStorageFake) SignedDownloadURL(context.Context, string, time.Duration) (string, error) {
-	return "", nil
+func (s *objectStorageFake) SignedDownloadURL(_ context.Context, key string, _ time.Duration) (string, error) {
+	s.signed = append(s.signed, key)
+	return "https://minio.example/" + key, nil
 }
 
 // jpegWithCaptureTime builds a minimal little-endian EXIF JPEG carrying

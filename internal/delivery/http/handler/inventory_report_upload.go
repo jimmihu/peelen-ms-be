@@ -9,7 +9,7 @@ import (
 	"peelen-ms-be/internal/domain/entity"
 )
 
-const maxInventoryReportEvidenceSize = 10 << 20
+const maxInventoryReportEvidenceSize = 5 << 20
 
 func (h *WorkflowHandler) bindInventoryReportInput(c *gin.Context) (entity.InventoryReportInput, []string, bool) {
 	var input entity.InventoryReportInput
@@ -61,8 +61,5 @@ func (h *WorkflowHandler) bindInventoryReportInput(c *gin.Context) (entity.Inven
 }
 
 func isInventoryReportEvidence(data []byte) (string, string, bool) {
-	if contentType, extension, ok := isSupportedImage(data); ok {
-		return contentType, extension, true
-	}
-	return isPDF(data)
+	return isSupportedImage(data)
 }

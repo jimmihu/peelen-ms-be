@@ -2422,7 +2422,7 @@
                   "key": "file",
                   "type": "file",
                   "src": "",
-                  "description": "Optional evidence file: JPEG, PNG, WebP, or PDF, max 10 MiB."
+                  "description": "Optional photo evidence: JPEG, PNG, or WebP, max 5 MiB."
                 }
               ]
             },
@@ -2442,6 +2442,27 @@
               }
             }
           ]
+        },
+        {
+          "name": "Get Inventory Report Photo Evidence URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/inventory-reports/{{inventory_report_id}}/evidence",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory-reports",
+                "{{inventory_report_id}}",
+                "evidence"
+              ]
+            },
+            "description": "Returns a scoped, signed MinIO URL for the uploaded photo. The URL expires after 10 minutes."
+          }
         },
         {
           "name": "Review Inventory Report",

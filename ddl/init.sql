@@ -416,7 +416,7 @@ CREATE TABLE IF NOT EXISTS inventory_reports (
     inventory_id uuid,
     user_id      uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     report_type  varchar(10) NOT NULL CHECK (report_type IN ('REQUEST', 'DAMAGED')),
-    evidence     text, -- object-storage key
+    evidence     text, -- MinIO object key for an optional photo (JPEG, PNG, or WebP)
     description  text NOT NULL,
     status       varchar(20) NOT NULL DEFAULT 'SUBMITTED'
                  CHECK (status IN ('SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'RESOLVED')),

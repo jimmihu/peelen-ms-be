@@ -280,6 +280,29 @@ func (h *WorkflowHandler) GetInventoryReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+func (h *WorkflowHandler) GetInventoryReportEvidence(c *gin.Context) {
+	if h.objectStorage == nil {
+		writeError(c, http.StatusServiceUnavailable, "OBJECT_STORAGE_UNAVAILABLE", "File storage is not configured")
+		return
+	}
+	report, err := h.usecase.GetInventoryReport(c.Request.Context(), currentUser(c), c.Param("id"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	if report.Evidence == nil || strings.TrimSpace(*report.Evidence) == "" {
+		writeError(c, http.StatusNotFound, "RESOURCE_NOT_FOUND", "Inventory report evidence not found")
+		return
+	}
+	url, err := h.objectStorage.SignedDownloadURL(c.Request.Context(), *report.Evidence, policyDownloadExpiry)
+	if err != nil {
+		_ = c.Error(err)
+		writeError(c, http.StatusInternalServerError, "OBJECT_STORAGE_ERROR", "Unable to generate evidence URL")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"url": url, "expires_in": int(policyDownloadExpiry.Seconds())}})
+}
+
 func (h *WorkflowHandler) CreateInventoryReport(c *gin.Context) {
 	input, uploaded, ok := h.bindInventoryReportInput(c)
 	defer removeMultipartForm(c)

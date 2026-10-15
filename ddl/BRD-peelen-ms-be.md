@@ -41,7 +41,7 @@ The API is versioned under `/api/v1`. Authenticated records are restricted accor
 ### 3.2 Out of scope or not yet delivered
 
 - UI/mobile client, notifications, offline synchronization, and external identity provider.
-- Upload endpoints for pipeline/inventory-report evidence. Report fields currently accept object keys; evidence file upload is not implemented.
+- Multipart photo upload for inventory-report evidence stores MinIO object keys in the report; scoped clients retrieve photos through short-lived signed URLs.
 - Assignment management endpoints. Assignment tables exist and seed data creates assignments, but no API route currently creates/updates assignments.
 - Pipeline-report history read endpoint.
 - Inventory-report audit/history table or history endpoint.
@@ -235,8 +235,9 @@ All routes are prefixed by `/api/v1`. Except health, login, and refresh, routes 
 | GET | `/pipeline-reports/{id}` | Authenticated, scoped | Read report and detail fields |
 | PATCH | `/pipeline-reports/{id}` | Assigned worker or in-scope manager | Update report details/status/revision; status changes create history |
 | GET | `/inventory-report` | Authenticated, scoped | Paginated inventory reports |
-| POST | `/inventory-report` | Authenticated in vendor scope | JSON `vendor_id`, `report_type`, `description`; optional `inventory_id`, evidence object key |
+| POST | `/inventory-report` | Authenticated in vendor scope | JSON or multipart `vendor_id`, `report_type`, `description`; optional `inventory_id`; multipart photo field `file` (JPEG/PNG/WebP, max 5 MiB) |
 | GET | `/inventory-report/{id}` | Authenticated, scoped | Read inventory report |
+| GET | `/inventory-report/{id}/evidence` | Authenticated, scoped | Return a signed MinIO URL for photo evidence, valid for 10 minutes |
 | PATCH | `/inventory-report/{id}/review` | Super Admin, Admin, Admin Worker in scope | JSON status `IN_REVIEW`, `APPROVED`, `REJECTED`, or `RESOLVED`; optional `review_reason` |
 | GET/POST | `/inventory-reports` | Alias | Same list/create handlers as singular path |
 | GET | `/inventory-reports/{id}` | Alias | Same detail handler |
@@ -325,7 +326,7 @@ inventory_reports -- optional inventory reference (composite inventory_id/vendor
 
 1. Role names and current scope rules reflect the implementation, and require product-owner approval as the business policy.
 2. A worker's task report date uses UTC date behavior where no date is supplied.
-3. Inventory report evidence and pipeline report evidence are object keys; clients need an independent upload path until evidence upload APIs are delivered.
+3. Inventory report photo evidence is uploaded to MinIO, with its object key stored in PostgreSQL; authorized clients obtain a short-lived signed URL through the evidence endpoint. Pipeline report evidence photos are also stored in MinIO.
 4. Assignment creation/reassignment is currently performed outside these API routes.
 5. Dashboard counts are operational summaries, not an accounting/official compliance report.
 6. Status values and state transitions should be confirmed with product owners; database enum checks constrain allowed values but do not encode a complete transition state machine.

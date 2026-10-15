@@ -96,10 +96,12 @@ func NewRouter(cfg Config) *gin.Engine {
 	inventoryReports := operations.Group("/inventory-report")
 	inventoryReports.GET("", cfg.WorkflowHandler.ListInventoryReports)
 	inventoryReports.POST("", cfg.WorkflowHandler.CreateInventoryReport)
+	inventoryReports.GET("/:id/evidence", cfg.WorkflowHandler.GetInventoryReportEvidence)
 	inventoryReports.GET("/:id", cfg.WorkflowHandler.GetInventoryReport)
 	inventoryReports.PATCH("/:id/review", cfg.WorkflowHandler.ReviewInventoryReport)
 	operations.GET("/inventory-reports", cfg.WorkflowHandler.ListInventoryReports)
 	operations.POST("/inventory-reports", cfg.WorkflowHandler.CreateInventoryReport)
+	operations.GET("/inventory-reports/:id/evidence", cfg.WorkflowHandler.GetInventoryReportEvidence)
 	operations.GET("/inventory-reports/:id", cfg.WorkflowHandler.GetInventoryReport)
 	operations.PATCH("/inventory-reports/:id/review", cfg.WorkflowHandler.ReviewInventoryReport)
 

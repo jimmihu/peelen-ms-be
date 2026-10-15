@@ -64,6 +64,12 @@ make db-migrate MIGRATIONS="ddl/migrations/006_pipeline_site.sql ddl/migrations/
 
 `006_pipeline_site.sql` assigns a site to pipelines of single-site vendors and stops with a
 list of pipelines that need a site set manually.
+Migration `008_inventory_report_photo_evidence.sql` ensures `inventory_reports.evidence`
+exists to store MinIO photo object keys; on an existing database, apply only that migration:
+
+```bash
+make db-migrate MIGRATIONS="ddl/migrations/008_inventory_report_photo_evidence.sql"
+```
 
 The migration invalidates any legacy refresh token that has no associated session.
 It does not convert unrelated legacy schemas; back up such a database and plan a
@@ -240,12 +246,15 @@ the database session time zone.
 
 `POST /inventory-report` accepts JSON or `multipart/form-data` with `vendor_id`,
 `report_type` (`REQUEST` or `DAMAGED`), `description`, optional `inventory_id`,
-and optional evidence. For multipart requests, upload evidence using the `file`
-field (JPEG, PNG, WebP, or PDF; up to 10 MiB); the file is stored in object
-storage. JSON clients may continue to send an existing `evidence` object key.
+and optional evidence. For multipart requests, upload a photo using the `file`
+field (JPEG, PNG, or WebP; up to 5 MiB); the photo is stored in MinIO and its
+object key is stored in the `inventory_reports.evidence` column. JSON clients
+may continue to send an existing `evidence` object key.
 `DAMAGED` requires an inventory belonging to that vendor. Managers can review
 reports using `PATCH /inventory-report/{id}/review` with `status` (`IN_REVIEW`,
 `APPROVED`, `REJECTED`, or `RESOLVED`) and optional `review_reason`.
+Use `GET /inventory-report/{id}/evidence` to get a scoped, signed MinIO URL for
+the report photo; the URL expires after 10 minutes.
 Report lists accept `page`, `limit`, `vendor_id`, `site_id`, `user_id`, `status`,
 `from`, and `to`.
 
