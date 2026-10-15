@@ -87,22 +87,31 @@ func (u *AuthUsecaseImpl) Login(ctx context.Context, username, password string, 
 		}
 		return nil, ErrInvalidCredentials
 	}
-	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
-		if err := u.userRepo.RecordFailedLogin(ctx, username, metadata.IPAddress); err != nil {
-			return nil, err
+	// Load roles early so we can skip the locking mechanism for WORKER accounts.
+	if err := u.userRepo.LoadAuthorization(ctx, user); err != nil {
+		return nil, err
+	}
+	isWorker := hasRole(user, "WORKER")
+	if !isWorker {
+		if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+			if err := u.userRepo.RecordFailedLogin(ctx, username, metadata.IPAddress); err != nil {
+				return nil, err
+			}
+			return nil, ErrAccountLocked
 		}
-		return nil, ErrAccountLocked
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		if err := u.userRepo.RecordFailedLogin(ctx, username, metadata.IPAddress); err != nil {
 			return nil, err
 		}
-		updated, loadErr := u.userRepo.GetByUsername(ctx, username)
-		if loadErr != nil {
-			return nil, loadErr
-		}
-		if updated != nil && updated.LockedUntil != nil && time.Now().Before(*updated.LockedUntil) {
-			return nil, ErrAccountLocked
+		if !isWorker {
+			updated, loadErr := u.userRepo.GetByUsername(ctx, username)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			if updated != nil && updated.LockedUntil != nil && time.Now().Before(*updated.LockedUntil) {
+				return nil, ErrAccountLocked
+			}
 		}
 		return nil, ErrInvalidCredentials
 	}
@@ -113,9 +122,7 @@ func (u *AuthUsecaseImpl) Login(ctx context.Context, username, password string, 
 	user.LockedUntil = nil
 	now := time.Now()
 	user.LastLoginAt = &now
-	if err := u.userRepo.LoadAuthorization(ctx, user); err != nil {
-		return nil, err
-	}
+	// LoadAuthorization was already called above; no need to call it again.
 	return u.issueTokens(ctx, user, metadata)
 }
 
