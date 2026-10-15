@@ -205,6 +205,7 @@ func TestRefreshRotatesTokenAndDetectsReuse(t *testing.T) {
 
 func TestFiveFailedPasswordsLockAccount(t *testing.T) {
 	users := newAuthUserRepoFake(t)
+	users.user.Roles = []string{"ADMIN"} // WORKER role is exempt from lockout
 	sessions := newAuthSessionRepoFake()
 	service := newTestAuthUsecase(users, sessions)
 	for attempt := 1; attempt <= 5; attempt++ {
