@@ -48,8 +48,10 @@ one Admin Worker per vendor (`aw.*`) and 10 Workers per vendor (`w.vnd001.01` ..
 and 06-10 at the second, each assigned every item of one area.
 It also fills the Worker flow: pipeline reports for the last 91 days (with details and status
 history, with a different trend per vendor), vendor inventories, sample inventory reports,
-and sample SLA/maturity rules. Task facts and frozen scores are built by the server's
-scoring job on first start.
+and, via `ddl/seed_scoring.sql`, sample SLA/maturity rules. Task facts and frozen scores
+are built by the server's scoring job on start, or right away with `make scoring-backfill`.
+On a database you do not want to reset, `make db-seed-scoring` adds only the missing
+sample rules.
 Use it instead of `seed.sql`/`seed_v2.sql`.
 
 For a database created from an earlier version of the schema, apply the migrations in

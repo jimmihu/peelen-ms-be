@@ -5,7 +5,7 @@
 -- 1 admin per PLTU, 1 admin worker per vendor, 10 worker per vendor,
 -- 9 pipeline area (55 item lokasi) per site vendor, assignment task tiap worker,
 -- pipeline report 91 hari terakhir (detail + history, tanpa review admin),
--- contoh aturan SLA & maturity (fakta & snapshot dibuat job saat server jalan),
+-- (aturan SLA & maturity: seed_scoring.sql; fakta & snapshot: job server / make scoring-backfill),
 -- inventory dan laporannya.
 -- Password semua user: Password123!
 -- =====================================================
@@ -525,44 +525,6 @@ JOIN user_scopes aws ON aws.vendor_id = ws.vendor_id
 JOIN users aw ON aw.id = aws.user_id AND aw.username LIKE 'aw.%'
 LEFT JOIN inventories inv ON inv.vendor_id = ws.vendor_id AND inv.item = fixture.inventory_item;
 
--- Sample rules: SLA monthly default per vendor, one stricter override at Paiton,
--- maturity monthly default per vendor (default levels).
-INSERT INTO score_rules (kind, vendor_id, site_id, period_type, version, created_by, created_at)
-SELECT 'SLA', v.id, NULL, 'MONTH', 1, sa.id, now() - interval '120 days'
-FROM vendors v CROSS JOIN (SELECT id FROM users WHERE username = 'superadmin') sa;
-
-INSERT INTO score_rules (kind, vendor_id, site_id, period_type, version, created_by, created_at)
-SELECT 'SLA', v.id, s.id, 'MONTH', 1, ad.id, now() - interval '120 days'
-FROM vendors v JOIN sites s ON s.code = 'PAITON'
-JOIN users ad ON ad.username = 'admin.paiton'
-WHERE v.code = 'VND-001';
-
-INSERT INTO score_rule_items (rule_id, code, weight, target)
-SELECT r.id, x.code, x.weight, CASE WHEN r.site_id IS NULL THEN x.target ELSE x.strict END
-FROM score_rules r
-CROSS JOIN (VALUES
-    ('COMPLETION_RATE', 40, 95, 97),
-    ('ON_TIME_RATE', 40, 90, 95),
-    ('EVIDENCE_COMPLETE_RATE', 20, 98, 99)
-) AS x(code, weight, target, strict)
-WHERE r.kind = 'SLA';
-
-INSERT INTO score_rules (kind, vendor_id, site_id, period_type, version, created_by, created_at)
-SELECT 'MATURITY', v.id, NULL, 'MONTH', 1, sa.id, now() - interval '120 days'
-FROM vendors v CROSS JOIN (SELECT id FROM users WHERE username = 'superadmin') sa;
-
-INSERT INTO score_rule_items (rule_id, code, weight)
-SELECT r.id, x.code, x.weight
-FROM score_rules r
-CROSS JOIN (VALUES ('COMPLETION_RATE', 30), ('ON_TIME_RATE', 30), ('EVIDENCE_COMPLETE_RATE', 15),
-    ('LATE_UPLOAD_RATE', 10), ('CONSISTENCY', 15)) AS x(code, weight)
-WHERE r.kind = 'MATURITY';
-
-INSERT INTO score_rule_levels (rule_id, level, min_score, min_dimension, consecutive_periods)
-SELECT r.id, l.level, l.min_score, l.min_dimension, l.periods
-FROM score_rules r
-CROSS JOIN (VALUES (2, 60, 50, 1), (3, 75, 65, 2), (4, 85, 75, 3), (5, 95, 85, 3))
-    AS l(level, min_score, min_dimension, periods)
-WHERE r.kind = 'MATURITY';
+-- Aturan contoh SLA & maturity ada di seed_scoring.sql (dijalankan oleh make db-reset).
 
 COMMIT;
