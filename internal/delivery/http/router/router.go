@@ -164,7 +164,9 @@ func NewRouter(cfg Config) *gin.Engine {
 		operations.GET(kind.results, cfg.ScoringHandler.History(kind.code))
 	}
 
-	operations.GET("/dashboard/summary", cfg.DashboardHandler.GetDashboard)
+	dashboard := operations.Group("/dashboard")
+	dashboard.GET("/summary", cfg.DashboardHandler.GetDashboard)
+	dashboard.GET("/summary/detail", cfg.DashboardHandler.GetDashboardDetail)
 
 	return router
 }
