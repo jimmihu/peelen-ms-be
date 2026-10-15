@@ -103,10 +103,13 @@ as HTTPS. The app rejects plain HTTP in release mode.
 
 All endpoints use the `/api/v1` prefix.
 
-The Postman collection lives in [postman/collections/peelen-ms-be](postman/collections/peelen-ms-be)
-(Postman's Git-synced YAML format, one file per request); open the repository folder as a
-Postman workspace to use it, with an environment from `postman/*.postman_environment.json`.
-Run Auth > Login first, then set valid vendor/site IDs in the collection variables.
+To try the API, import [postman/peelen-ms-be.postman_collection.json](postman/peelen-ms-be.postman_collection.json)
+into Postman together with an environment from `postman/*.postman_environment.json`. Run
+Auth > Login first, then set valid vendor/site IDs in the collection variables.
+
+The JSON file is generated: edit the YAML source in
+[postman/collections/peelen-ms-be](postman/collections/peelen-ms-be) (one file per request)
+and regenerate it with `make postman-export` (needs Python 3 with PyYAML).
 
 | Method | Path | Access |
 |---|---|---|

@@ -1,4 +1,4 @@
-.PHONY: build run test clean deps db-setup db-seed db-reset db-seed-scoring db-migrate scoring-backfill bootstrap-admin
+.PHONY: build run test clean deps db-setup db-seed db-reset db-seed-scoring db-migrate scoring-backfill postman-export bootstrap-admin
 
 DB_NAME ?= auth_db
 
@@ -54,6 +54,10 @@ scoring-backfill:
 MIGRATIONS ?= $(sort $(wildcard ddl/migrations/*.sql))
 db-migrate:
 	set -a; . ./.env; set +a; for f in $(MIGRATIONS); do echo "== $$f"; PGSSLMODE="$$DB_SSLMODE" PGPASSWORD="$$DB_PASSWORD" psql -X -w -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f "$$f" || exit 1; done
+
+# Importable Postman collection (v2.1 JSON) generated from the YAML source.
+postman-export:
+	python3 scripts/postman_export.py postman/collections/peelen-ms-be postman/peelen-ms-be.postman_collection.json
 
 # Set BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD in the environment first.
 bootstrap-admin:

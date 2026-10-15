@@ -1,3 +1,3 @@
 $kind: collection
-description: Penugasan WORKER ke pipeline item (shift dipilih per report). Hanya ADMIN_WORKER yang bisa membuat/mengubah, untuk vendornya sendiri. SUPER_ADMIN dan ADMIN hanya bisa melihat dalam scope; WORKER hanya melihat penugasannya sendiri.
-order: 5000
+description: "Penugasan WORKER ke pipeline item (shift dipilih per report). Hanya ADMIN_WORKER yang bisa membuat/mengubah, untuk vendornya sendiri. SUPER_ADMIN dan ADMIN hanya bisa melihat dalam scope; WORKER hanya melihat penugasannya sendiri."
+order: 12000
