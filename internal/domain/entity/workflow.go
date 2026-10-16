@@ -3,10 +3,12 @@ package entity
 import "time"
 
 type Site struct {
-	ID        string    `json:"id"`
-	Code      string    `json:"code"`
-	Name      string    `json:"name"`
-	SiteType  *string   `json:"site_type,omitempty"`
+	ID       string  `json:"id"`
+	Code     string  `json:"code"`
+	Name     string  `json:"name"`
+	SiteType *string `json:"site_type,omitempty"`
+	// Timezone is the site's IANA zone (Asia/Jakarta, Asia/Makassar, Asia/Jayapura).
+	Timezone  string    `json:"timezone"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -38,6 +40,9 @@ type PipelineReport struct {
 	VendorID                 string     `json:"vendor_id"`
 	UserID                   string     `json:"user_id"`
 	Username                 string     `json:"username"`
+	SiteID                   string     `json:"site_id"`
+	SiteName                 string     `json:"site_name"`
+	SiteTimezone             string     `json:"site_timezone"` // IANA zone of shift hours and report_date
 	Shift                    string     `json:"shift"`
 	ReportDate               string     `json:"report_date"`
 	Status                   string     `json:"status"`
@@ -64,6 +69,10 @@ type PipelineReportInput struct {
 	NoteCategory   *string    `json:"note_category"`
 	Notes          *string    `json:"notes"`
 	Reason         *string    `json:"reason"`
+	// Wall-clock photo times without an offset ("2006-01-02T15:04:05"), read in
+	// the site's time zone. Set by the upload handler from EXIF; not part of the API.
+	OpenDateLocal   *string `json:"-"`
+	ClosedDateLocal *string `json:"-"`
 }
 
 type InventoryReport struct {
@@ -111,8 +120,13 @@ type MyTask struct {
 	ItemID         string  `json:"item_id"`
 	ItemName       string  `json:"item_name"`
 	VendorID       string  `json:"vendor_id"`
+	SiteID         string  `json:"site_id"`
+	SiteName       string  `json:"site_name"`
+	SiteTimezone   string  `json:"site_timezone"` // IANA zone of shift hours and report_date
 	Shift          *string `json:"shift,omitempty"`
-	ReportDate     string  `json:"report_date"`
+	ShiftStart     *string `json:"shift_start,omitempty"`
+	ShiftEnd       *string `json:"shift_end,omitempty"`
+	ReportDate     string  `json:"report_date"` // today at the site when no date was asked
 	ReportID       *string `json:"report_id,omitempty"`
 	ReportStatus   *string `json:"report_status,omitempty"`
 	StatusRevisi   *string `json:"status_revisi,omitempty"`

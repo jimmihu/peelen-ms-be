@@ -38,6 +38,8 @@ File ini dihasilkan dari migration 007, `seed_v3.sql`, dan `seed_scoring.sql`; s
 | `admin.indramayu` | PLTU Indramayu | VND-004 |
 | `admin.plbratu` | PLTU Pelabuhan Ratu | VND-005 PT Cahaya Energi Nusantara |
 | `admin.adipala` | PLTU Adipala | VND-005 |
+| `admin.jeneponto` | PLTU Jeneponto (**WITA**, `Asia/Makassar`) | VND-006 PT Nusantara Timur Teknik |
+| `admin.holtekamp` | PLTU Holtekamp (**WIT**, `Asia/Jayapura`) | VND-006 |
 | `admin.regional` | PLTU Paiton **dan** PLTU Suralaya | VND-001 dan VND-002 |
 
 ### Admin Worker (scope: vendor)
@@ -49,10 +51,11 @@ File ini dihasilkan dari migration 007, `seed_v3.sql`, dan `seed_scoring.sql`; s
 | `aw.sinergi` | VND-003 |
 | `aw.bumi` | VND-004 |
 | `aw.cahaya` | VND-005 |
+| `aw.timur` | VND-006 (site WITA & WIT) |
 
 ### Worker (scope: vendor)
 
-Username `w.vnd<vendor>.<nomor>`, contoh `w.vnd001.01` sampai `w.vnd005.10`. Setiap vendor punya 10 worker:
+Username `w.vnd<vendor>.<nomor>`, contoh `w.vnd001.01` sampai `w.vnd006.10`. Setiap vendor punya 10 worker:
 
 | Worker | Site | Shift laporan | Tugas |
 |---|---|---|---|
@@ -68,6 +71,9 @@ Site pertama dan kedua per vendor:
 | VND-003 | REMBANG | TJB |
 | VND-004 | CIREBON | INDRAMAYU |
 | VND-005 | ADIPALA | PLBRATU |
+| VND-006 | HOLTEKAMP (WIT) | JENEPONTO (WITA) |
+
+Semua site lain WIB (`Asia/Jakarta`). Jam shift berlaku sebagai jam lokal site, jadi shift DAY (08:00–16:00) di Jeneponto = 07:00–15:00 WIB dan di Holtekamp = 06:00–14:00 WIB. `report_date` juga tanggal lokal site: shift NIGHT (00:00–08:00 WIT) di Holtekamp dimulai pukul 22:00 WIB hari sebelumnya.
 
 ## 3. Aturan SLA dan periode hasil
 
@@ -78,6 +84,7 @@ Site pertama dan kedua per vendor:
 | VND-003 | **QUARTER**, ketepatan waktu (`AVG_LATE_MINUTES`, `LATE_UPLOAD_RATE`) | REMBANG: **MONTH**, ketat |
 | VND-004 | **MONTH**, standar | – |
 | VND-005 | **WEEK**, dengan temuan K3 (`K3_FINDING_NOTES_RATE`) | ADIPALA: **QUARTER**, ketat |
+| VND-006 | **MONTH**, standar | JENEPONTO: **WEEK**, ketat |
 
 Set indikator:
 
@@ -92,11 +99,11 @@ Hasil periode per cakupan (perhatikan setiap jenis periode muncul di ketiga caku
 
 | Periode | Cakupan VENDOR | Cakupan SITE dan WORKER di site |
 |---|---|---|
-| **WEEK** | VND-002, VND-005 | PAITON, LABUAN, PLBRATU |
-| **MONTH** | VND-001, VND-004 | PACITAN, REMBANG, CIREBON, INDRAMAYU |
+| **WEEK** | VND-002, VND-005 | PAITON, LABUAN, PLBRATU, JENEPONTO |
+| **MONTH** | VND-001, VND-004, VND-006 | PACITAN, REMBANG, CIREBON, INDRAMAYU, HOLTEKAMP |
 | **QUARTER** | VND-003 | SURALAYA, TJB, ADIPALA |
 
-Maturity: satu aturan default per vendor dengan periode yang sama seperti SLA default vendor tsb (VND-001/004 bulanan, VND-002/005 mingguan, VND-003 kuartalan) dan level default.
+Maturity: satu aturan default per vendor dengan periode yang sama seperti SLA default vendor tsb (VND-001/004/006 bulanan, VND-002/005 mingguan, VND-003 kuartalan) dan level default.
 
 Periode yang sudah dibekukan setelah `make scoring-backfill` (contoh reset 15 Oktober 2026):
 
@@ -117,6 +124,7 @@ Profil per vendor (sengaja dibuat berbeda supaya hasilnya bervariasi):
 | VND-002 | Membaik | Minggu-minggu awal tidak tercapai, minggu terakhir tercapai; level maturity naik |
 | VND-003 | Memburuk | Awal kuartal baik, akhir kuartal buruk; Q3 tidak tercapai (upload susulan > 10%) |
 | VND-005 | Lemah (~75% selesai) | Selalu tidak tercapai; maturity rendah |
+| VND-006 | Baik (~97% selesai, ~95% tepat waktu) | Umumnya tercapai; aturan ketat mingguan di JENEPONTO kadang tidak |
 
 Skor live periode berjalan hanya menghitung hari sampai hari ini. Task hari ini dari shift yang sudah selesai saat seed dijalankan dihitung seperti hari biasa; shift yang masih berjalan sebagian besar belum lapor, jadi skor live sedikit lebih rendah dari hasil periode yang sudah ditutup.
 
@@ -141,12 +149,12 @@ ORDER BY 1, 2;
 
 | # | Langkah | Hasil yang diharapkan |
 |---|---|---|
-| SA-1 | `GET /sla-scores?scope=VENDOR&from=2026-06-01` | Hasil untuk 5 vendor: VND-002/005 per minggu, VND-001/004 per bulan, VND-003 per kuartal |
-| SA-2 | `GET /sla-scores?scope=SITE&from=2026-06-01` | Hasil untuk 10 site dengan jenis periode sesuai tabel di bagian 3 |
+| SA-1 | `GET /sla-scores?scope=VENDOR&from=2026-06-01` | Hasil untuk 6 vendor: VND-002/005 per minggu, VND-001/004/006 per bulan, VND-003 per kuartal |
+| SA-2 | `GET /sla-scores?scope=SITE&from=2026-06-01` | Hasil untuk 12 site dengan jenis periode sesuai tabel di bagian 3 |
 | SA-3 | `GET /sla-scores?scope=WORKER&worker_id=<id w.vnd001.06>` | Hasil mingguan di PAITON (aturan override) |
 | SA-4 | `GET /sla-scores/live?scope=SITE&site_id=<id SURALAYA>` | Satu hasil kuartal berjalan untuk VND-002 dengan aturan ketat |
 | SA-5 | `POST /sla-rules` default untuk VND-004 (`site_id: null`) | 201, versi 2; versi 1 punya `superseded_at` |
-| SA-6 | `GET /maturity-levels?scope=VENDOR` | Hasil untuk 5 vendor, masing-masing dengan `level` 1–5 dan skor per dimensi; periode mengikuti aturan maturity vendor |
+| SA-6 | `GET /maturity-levels?scope=VENDOR` | Hasil untuk 6 vendor, masing-masing dengan `level` 1–5 dan skor per dimensi; periode mengikuti aturan maturity vendor |
 
 ### Admin (`admin.paiton`)
 
@@ -189,6 +197,22 @@ ORDER BY 1, 2;
 | WK-3 | `GET /sla-scores/live?scope=WORKER&worker_id=<id worker lain>` | Tetap hanya hasil dirinya sendiri |
 | WK-4 | `GET /sla-scores?scope=VENDOR` | 403 |
 | WK-5 | `GET /maturity-levels?scope=WORKER` | Hanya dirinya |
+| WK-6 | `POST /pipeline-reports` hanya dengan `pipeline_item_id` | 201; `report_date` = hari ini dan `shift` = shift yang sedang berjalan di zona waktu site |
+| WK-7 | `POST /pipeline-reports` dengan `report_date` kemarin tanpa `shift` | 400 (`shift` wajib untuk tanggal selain hari ini) |
+| WK-8 | Super Admin `PATCH /sites/{id}` `timezone: "Asia/Makassar"`, lalu WK-6 di site itu | Shift & tanggal mengikuti WITA (1 jam lebih awal dari WIB) |
+
+### Zona waktu WITA & WIT (`aw.timur`, `w.vnd006.*`, `admin.jeneponto`, `admin.holtekamp`)
+
+| # | Langkah | Hasil yang diharapkan |
+|---|---|---|
+| TZ-1 | `GET /sites` | JENEPONTO `timezone` = `Asia/Makassar`, HOLTEKAMP = `Asia/Jayapura`, lainnya `Asia/Jakarta` |
+| TZ-2 | `w.vnd006.01` (HOLTEKAMP, DAY): `GET /my-tasks` tanpa `date` pukul 23:30 WIB | Task untuk **besok** (tanggal lokal WIT sudah berganti) |
+| TZ-3 | `w.vnd006.07` (JENEPONTO, DAY): `POST /pipeline-reports` hanya `pipeline_item_id` pukul 07:30 WIB | 201, `shift` = DAY (08:30 WITA), `status_revisi` = NONE |
+| TZ-4 | Sama seperti TZ-3 untuk pekerja WIB (`w.vnd001.07`) pukul 07:30 WIB | 201, `shift` = NIGHT (shift DAY WIB belum mulai) |
+| TZ-5 | `w.vnd006.01` kirim report DAY hari ini pukul 14:30 WIB | `status_revisi` = SUBMITTED (shift DAY WIT berakhir 16:00 WIT = 14:00 WIB) |
+| TZ-6 | Upload foto JPEG tanpa offset EXIF, jam kamera 09:00, ke task HOLTEKAMP | `open_date` = `09:00+09:00` (00:00 UTC), bukan 09:00 WIB |
+| TZ-7 | `GET /sla-scores?scope=SITE&site_id=<HOLTEKAMP>` dan `<JENEPONTO>` | HOLTEKAMP bulanan, JENEPONTO mingguan (aturan ketat); tanggal periode = tanggal lokal site |
+| TZ-8 | `admin.holtekamp`: `GET /pipelines` | Hanya pipeline VND-006 di HOLTEKAMP |
 
 ### Validasi umum
 
@@ -198,6 +222,7 @@ ORDER BY 1, 2;
 | V-2 | `POST /sla-rules` dengan total bobot 90 | 400 |
 | V-3 | `POST /sla-rules` dengan indikator `CONSISTENCY` | 400 (khusus maturity) |
 | V-4 | `POST /maturity-rules` tanpa `levels` | 201, level default terisi |
+| V-5 | `POST /sites` dengan `timezone: "WITA"` | 400 (harus nama IANA, mis. `Asia/Makassar`) |
 
 ## 5. Memeriksa angka
 

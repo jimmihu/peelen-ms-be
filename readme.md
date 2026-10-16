@@ -216,8 +216,8 @@ because pipeline reports reference the assignment. `GET /assignments` accepts `p
 `limit`, `vendor_id`, `site_id`, `pipeline_id`, `pipeline_item_id`, `user_id`, and
 `is_active`; Workers only see their own assignments.
 
-`POST /pipeline-reports` accepts `pipeline_item_id`, `shift`, `report_date`
-(`YYYY-MM-DD`), optional `status` (`IN_PROGRESS`, the default, or `COMPLETED`), and
+`POST /pipeline-reports` accepts `pipeline_item_id`, optional `shift` and
+`report_date` (`YYYY-MM-DD`), optional `status` (`IN_PROGRESS`, the default, or `COMPLETED`), and
 optional report details (`evidence_before`, `evidence_after`, `open_date`,
 `closed_date`, `note_category`, `notes`). The caller must have an active assignment
 for the pipeline item. `PATCH /pipeline-reports/{id}` is Worker-only: the assigned
@@ -225,11 +225,21 @@ Worker updates details and moves `IN_PROGRESS` to `COMPLETED`; a completed repor
 cannot be reopened. `COMPLETED` requires `evidence_after` and `closed_date`. There is
 no manager review; managers only read reports.
 
+Each site has an IANA time zone (`timezone` on `POST/PATCH /sites`, default
+`Asia/Jakarta`; use `Asia/Makassar` for WITA and `Asia/Jayapura` for WIT). Shift
+hours and `report_date` are wall-clock times at the pipeline's site, and all
+stored timestamps are absolute (`timestamptz`), so WIB, WITA and WIT sites are
+compared correctly. Without `report_date` the server uses today at the site;
+without `shift` it uses the shift running now at the site. A `report_date` other
+than today requires `shift`. `GET /me/tasks` without `date` likewise lists today
+at each task's site. Tasks and pipeline reports include `site_id`, `site_name` and
+`site_timezone` so clients can show times on the site's clock.
+
 `status_revisi` is set by the server: `NONE` while the report is sent within its
 shift, `SUBMITTED` once it is created or changed after the shift ends (late upload,
 e.g. no signal on site). Uploads stay open until the same shift starts the next day;
 after that the API returns `409 REPORT_UPLOAD_CLOSED`. Shift windows are evaluated in
-the database time zone, so set it to the plant's local zone (e.g. `Asia/Jakarta`).
+the site's time zone.
 Status and revision changes are recorded in `pipeline_report_history`.
 
 Both report endpoints also accept `multipart/form-data` with photo files
@@ -240,9 +250,11 @@ For a JPEG, the camera's EXIF capture time becomes `open_date` (before photo) an
 who finished on time but uploaded later for lack of signal is not counted as
 late. Photos without EXIF keep the client's `open_date`/`closed_date`. Either
 way the times must lie between one hour before the shift starts and the moment
-of upload, which rejects old photos from the gallery. EXIF times without an
-offset are read in `APP_TIMEZONE` (default `Asia/Jakarta`), which is also used as
-the database session time zone.
+of upload, which rejects old photos from the gallery. EXIF times with an offset
+(`OffsetTimeOriginal`) are exact; without one they are read in the site's time
+zone. Client `open_date`/`closed_date` must be RFC 3339 with an offset.
+`APP_TIMEZONE` (default `Asia/Jakarta`) is the database session time zone and the
+default for organization-wide dates such as SLA periods and the daily report.
 
 `POST /inventory-report` accepts JSON or `multipart/form-data` with `vendor_id`,
 `report_type` (`REQUEST` or `DAMAGED`), `description`, optional `inventory_id`,

@@ -139,13 +139,13 @@ func TestCreatePipelineReportTakesWorkTimesFromPhotoEXIF(t *testing.T) {
 		in.EvidenceAfter == nil || !strings.HasPrefix(*in.EvidenceAfter, "pipeline-reports/") {
 		t.Fatalf("evidence keys not set: before=%v after=%v", in.EvidenceBefore, in.EvidenceAfter)
 	}
-	wantOpen := time.Date(2026, 10, 14, 9, 0, 0, 0, jakarta)
-	wantClosed := time.Date(2026, 10, 14, 9, 40, 0, 0, jakarta)
-	if in.OpenDate == nil || !in.OpenDate.Equal(wantOpen) {
-		t.Fatalf("open_date = %v, want %v", in.OpenDate, wantOpen)
+	// EXIF without an offset is a wall-clock time at the site; the repository
+	// converts it with the site's time zone.
+	if in.OpenDate != nil || in.OpenDateLocal == nil || *in.OpenDateLocal != "2026-10-14T09:00:00" {
+		t.Fatalf("open = %v / %v, want local 2026-10-14T09:00:00", in.OpenDate, in.OpenDateLocal)
 	}
-	if in.ClosedDate == nil || !in.ClosedDate.Equal(wantClosed) {
-		t.Fatalf("closed_date = %v, want %v", in.ClosedDate, wantClosed)
+	if in.ClosedDate != nil || in.ClosedDateLocal == nil || *in.ClosedDateLocal != "2026-10-14T09:40:00" {
+		t.Fatalf("closed = %v / %v, want local 2026-10-14T09:40:00", in.ClosedDate, in.ClosedDateLocal)
 	}
 }
 

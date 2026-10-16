@@ -192,10 +192,8 @@ func (h *WorkflowHandler) DeleteShift(c *gin.Context) {
 }
 
 func (h *WorkflowHandler) MyTasks(c *gin.Context) {
+	// Without a date the repository uses today at each task's site.
 	date := c.Query("date")
-	if date == "" {
-		date = time.Now().UTC().Format("2006-01-02")
-	}
 	tasks, err := h.usecase.ListMyTasks(c.Request.Context(), currentUser(c), date)
 	if err != nil {
 		handleWorkflowError(c, err)
@@ -351,7 +349,7 @@ func (h *WorkflowHandler) DashboardReport(c *gin.Context) {
 func (h *WorkflowHandler) DailyReport(c *gin.Context) {
 	date := c.Query("date")
 	if date == "" {
-		date = time.Now().UTC().Format("2006-01-02")
+		date = time.Now().In(h.location).Format("2006-01-02")
 	}
 	result, err := h.usecase.DailyReport(
 		c.Request.Context(), currentUser(c), date, c.Query("site_id"), c.Query("vendor_id"),

@@ -696,7 +696,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"SITE001\",\n  \"name\": \"Site Example\",\n  \"site_type\": \"warehouse\"\n}",
+              "raw": "{\n  \"code\": \"SITE001\",\n  \"name\": \"Site Example\",\n  \"site_type\": \"warehouse\",\n  \"timezone\": \"Asia/Jakarta\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -742,7 +742,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Site Example Updated\",\n  \"status\": \"ACTIVE\"\n}",
+              "raw": "{\n  \"name\": \"Site Example Updated\",\n  \"status\": \"ACTIVE\",\n  \"timezone\": \"Asia/Makassar\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1823,6 +1823,52 @@
               ]
             }
           }
+        },
+        {
+          "name": "Start Pipeline Report (Auto Shift)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipeline-reports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipeline-reports"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pipeline_item_id\": \"{{pipeline_item_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Worker memulai task tanpa shift dan report_date: server memakai tanggal hari ini dan shift yang sedang berjalan menurut zona waktu site (sites.timezone)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('pipeline_report_id', pm.response.json().data.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Create Pipeline Report",
