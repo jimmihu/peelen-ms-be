@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS sites (
     code       varchar(20)  NOT NULL UNIQUE,
     name       varchar(150) NOT NULL,   -- mis. PLTU Paiton
     site_type  varchar(30),             -- mis. PLTU, pabrik, gedung
+    -- Zona waktu IANA lokasi: Asia/Jakarta (WIB), Asia/Makassar (WITA), Asia/Jayapura (WIT).
+    -- Jam shift, "hari ini", batas upload, dan jam foto tanpa offset dihitung di zona ini.
+    timezone   varchar(64) NOT NULL DEFAULT 'Asia/Jakarta',
     status     varchar(10) NOT NULL DEFAULT 'ACTIVE'
                CHECK (status IN ('ACTIVE', 'INACTIVE')),
     created_at timestamptz NOT NULL DEFAULT now(),

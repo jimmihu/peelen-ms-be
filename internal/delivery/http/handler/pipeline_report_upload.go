@@ -14,6 +14,9 @@ import (
 
 const maxPipelineEvidenceSize = 5 << 20
 
+// exifWallLayout carries an EXIF wall-clock time to the repository.
+const exifWallLayout = "2006-01-02T15:04:05"
+
 // bindPipelineReportInput reads a pipeline report request as JSON, or as
 // multipart/form-data carrying evidence_before / evidence_after photos.
 // Uploaded photos are stored in object storage, and their EXIF capture time
@@ -55,9 +58,10 @@ func (h *WorkflowHandler) bindPipelineReportInput(c *gin.Context) (entity.Pipeli
 		field    string
 		evidence **string
 		taken    **time.Time
+		local    **string
 	}{
-		{"evidence_before", &input.EvidenceBefore, &input.OpenDate},
-		{"evidence_after", &input.EvidenceAfter, &input.ClosedDate},
+		{"evidence_before", &input.EvidenceBefore, &input.OpenDate, &input.OpenDateLocal},
+		{"evidence_after", &input.EvidenceAfter, &input.ClosedDate, &input.ClosedDateLocal},
 	} {
 		upload, err := readUpload(c, photo.field, maxPipelineEvidenceSize, isSupportedImage)
 		if err != nil {
@@ -87,9 +91,16 @@ func (h *WorkflowHandler) bindPipelineReportInput(c *gin.Context) (entity.Pipeli
 		}
 		keys = append(keys, key)
 		*photo.evidence = &key
-		// The camera's capture time wins over a client-supplied timestamp.
-		if captured, ok := exif.CaptureTime(upload.data, h.location); ok {
-			*photo.taken = &captured
+		// The camera's capture time wins over a client-supplied timestamp. Without an
+		// EXIF offset it is a wall-clock time at the site, converted with the site's
+		// time zone when the report is saved.
+		if captured, ok := exif.ReadCapture(upload.data); ok {
+			if captured.HasOffset {
+				*photo.taken = &captured.Time
+			} else {
+				wall := captured.Time.Format(exifWallLayout)
+				*photo.taken, *photo.local = nil, &wall
+			}
 		}
 	}
 	return input, keys, true

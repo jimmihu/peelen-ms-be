@@ -24,7 +24,7 @@ func NewWorkflowRepository(db *sql.DB) repository.WorkflowRepository {
 
 func (r *WorkflowRepositoryImpl) ListSites(ctx context.Context, access entity.OperationalAccess) ([]entity.Site, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT s.id::text, s.code, s.name, s.site_type, s.status, s.created_at, s.updated_at
+		SELECT s.id::text, s.code, s.name, s.site_type, s.timezone, s.status, s.created_at, s.updated_at
 		FROM sites s
 		WHERE ($1::boolean OR s.id = ANY($2::uuid[]) OR EXISTS (
 			SELECT 1 FROM vendor_sites vs WHERE vs.site_id = s.id AND vs.vendor_id = ANY($3::uuid[])
@@ -39,7 +39,7 @@ func (r *WorkflowRepositoryImpl) ListSites(ctx context.Context, access entity.Op
 	for rows.Next() {
 		var site entity.Site
 		var siteType sql.NullString
-		if err := rows.Scan(&site.ID, &site.Code, &site.Name, &siteType, &site.Status, &site.CreatedAt, &site.UpdatedAt); err != nil {
+		if err := rows.Scan(&site.ID, &site.Code, &site.Name, &siteType, &site.Timezone, &site.Status, &site.CreatedAt, &site.UpdatedAt); err != nil {
 			return nil, err
 		}
 		site.SiteType = nullStringPtr(siteType)
@@ -52,13 +52,13 @@ func (r *WorkflowRepositoryImpl) GetSite(ctx context.Context, access entity.Oper
 	var site entity.Site
 	var siteType sql.NullString
 	err := r.db.QueryRowContext(ctx, `
-		SELECT s.id::text, s.code, s.name, s.site_type, s.status, s.created_at, s.updated_at
+		SELECT s.id::text, s.code, s.name, s.site_type, s.timezone, s.status, s.created_at, s.updated_at
 		FROM sites s
 		WHERE s.id = $1 AND ($2::boolean OR s.id = ANY($3::uuid[]) OR EXISTS (
 			SELECT 1 FROM vendor_sites vs WHERE vs.site_id = s.id AND vs.vendor_id = ANY($4::uuid[])
 		))
 	`, id, workflowSuperAdmin(access), pq.Array(access.SiteIDs), pq.Array(access.VendorIDs)).
-		Scan(&site.ID, &site.Code, &site.Name, &siteType, &site.Status, &site.CreatedAt, &site.UpdatedAt)
+		Scan(&site.ID, &site.Code, &site.Name, &siteType, &site.Timezone, &site.Status, &site.CreatedAt, &site.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, repository.ErrNotFound
 	}
@@ -73,11 +73,11 @@ func (r *WorkflowRepositoryImpl) CreateSite(ctx context.Context, site entity.Sit
 	var result entity.Site
 	var siteType sql.NullString
 	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO sites (code, name, site_type, status)
-		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'ACTIVE'))
-		RETURNING id::text, code, name, site_type, status, created_at, updated_at
-	`, site.Code, site.Name, site.SiteType, site.Status).
-		Scan(&result.ID, &result.Code, &result.Name, &siteType, &result.Status, &result.CreatedAt, &result.UpdatedAt)
+		INSERT INTO sites (code, name, site_type, status, timezone)
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'ACTIVE'), COALESCE(NULLIF($5, ''), 'Asia/Jakarta'))
+		RETURNING id::text, code, name, site_type, timezone, status, created_at, updated_at
+	`, site.Code, site.Name, site.SiteType, site.Status, site.Timezone).
+		Scan(&result.ID, &result.Code, &result.Name, &siteType, &result.Timezone, &result.Status, &result.CreatedAt, &result.UpdatedAt)
 	if err != nil {
 		return nil, translateOperationalDBError(err)
 	}
@@ -92,11 +92,12 @@ func (r *WorkflowRepositoryImpl) UpdateSite(ctx context.Context, id string, site
 		UPDATE sites SET code = COALESCE(NULLIF($2, ''), code),
 			name = COALESCE(NULLIF($3, ''), name),
 			site_type = COALESCE($4, site_type),
-			status = COALESCE(NULLIF($5, ''), status)
+			status = COALESCE(NULLIF($5, ''), status),
+			timezone = COALESCE(NULLIF($6, ''), timezone)
 		WHERE id = $1
-		RETURNING id::text, code, name, site_type, status, created_at, updated_at
-	`, id, site.Code, site.Name, site.SiteType, site.Status).
-		Scan(&result.ID, &result.Code, &result.Name, &siteType, &result.Status, &result.CreatedAt, &result.UpdatedAt)
+		RETURNING id::text, code, name, site_type, timezone, status, created_at, updated_at
+	`, id, site.Code, site.Name, site.SiteType, site.Status, site.Timezone).
+		Scan(&result.ID, &result.Code, &result.Name, &siteType, &result.Timezone, &result.Status, &result.CreatedAt, &result.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, repository.ErrNotFound
 	}
@@ -329,19 +330,30 @@ func (r *WorkflowRepositoryImpl) DeleteShift(ctx context.Context, name string) e
 	return workflowRequireAffected(result)
 }
 
+// nullDate sends a zero time as SQL NULL.
+func nullDate(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value
+}
+
 func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.OperationalAccess, reportDate time.Time) ([]entity.MyTask, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name,
-			p.vendor_id::text, pr.shift, to_char($2::date, 'YYYY-MM-DD'),
+			p.vendor_id::text, pr.shift, to_char(day.d, 'YYYY-MM-DD'),
 			pr.id::text, pr.status, pr.status_revisi
 		FROM pipeline_item_assignments a
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites st ON st.id = p.site_id
+		-- No date asked: "today" at the task's site.
+		CROSS JOIN LATERAL (SELECT coalesce($2::date, (now() AT TIME ZONE st.timezone)::date) AS d) day
 		JOIN items i ON i.id = pi.item_id
-		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_assignment_id = a.id AND pr.report_date = $2::date
+		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_assignment_id = a.id AND pr.report_date = day.d
 		WHERE a.user_id = $1 AND a.is_active AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE' AND i.status = 'ACTIVE'
 		ORDER BY p.name, pi.sort_order, i.name, pr.shift
-	`, access.UserID, reportDate)
+	`, access.UserID, nullDate(reportDate))
 	if err != nil {
 		return nil, err
 	}
@@ -383,16 +395,25 @@ func (r *WorkflowRepositoryImpl) GetPipelineReport(ctx context.Context, access e
 	return &reports[0], nil
 }
 
-// Report timing, relative to the report's shift (alias sh) on dateExpr:
-// the shift ends at its end time (next day when it crosses midnight), and a
-// Worker may still upload until the same shift starts the next day.
-func reportShiftEndSQL(dateExpr string) string {
-	return fmt.Sprintf(`((%s + sh.end_time) + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END)`, dateExpr)
+// Report timing, relative to the report's shift (alias sh) on dateExpr, in the
+// site's time zone tzExpr (an IANA name): the shift ends at its end time (next
+// day when it crosses midnight), and a Worker may still upload until the same
+// shift starts the next day. Both return instants (timestamptz).
+func reportShiftEndSQL(dateExpr, tzExpr string) string {
+	return fmt.Sprintf(`(((%s + sh.end_time) + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END) AT TIME ZONE %s)`, dateExpr, tzExpr)
 }
 
-func reportUploadCloseSQL(dateExpr string) string {
-	return fmt.Sprintf(`(%s + sh.start_time + interval '1 day')`, dateExpr)
+func reportUploadCloseSQL(dateExpr, tzExpr string) string {
+	return fmt.Sprintf(`((%s + sh.start_time + interval '1 day') AT TIME ZONE %s)`, dateExpr, tzExpr)
 }
+
+// siteTimezoneOfReportSQL is the time zone of the site where report $1 is worked.
+const siteTimezoneOfReportSQL = `(SELECT st.timezone FROM pipeline_reports r
+	JOIN pipeline_item_assignments ra ON ra.id = r.pipeline_item_assignment_id
+	JOIN pipeline_items rpi ON rpi.id = ra.pipeline_item_id
+	JOIN pipelines rp ON rp.id = rpi.pipeline_id
+	JOIN sites st ON st.id = rp.site_id
+	WHERE r.id = $1)`
 
 // checkReportWorkTimes rejects open/closed times (from photo EXIF or the
 // client) earlier than an hour before the shift starts or later than now, so
@@ -401,11 +422,15 @@ func checkReportWorkTimes(ctx context.Context, tx *sql.Tx, reportID string) erro
 	var valid bool
 	if err := tx.QueryRowContext(ctx, `
 		SELECT coalesce(bool_and(t IS NULL OR (
-			t >= (pr.report_date + sh.start_time) - interval '1 hour'
+			t >= ((pr.report_date + sh.start_time) - interval '1 hour') AT TIME ZONE st.timezone
 			AND t <= now() + interval '5 minutes'
 		)), true)
 		FROM pipeline_reports pr
 		JOIN shifts sh ON sh.shift = pr.shift
+		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites st ON st.id = p.site_id
 		JOIN pipeline_report_details d ON d.pipeline_report_id = pr.id
 		CROSS JOIN LATERAL (VALUES (d.open_date), (d.closed_date)) AS times(t)
 		WHERE pr.id = $1
@@ -424,9 +449,42 @@ func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, acces
 		return nil, err
 	}
 	defer tx.Rollback()
+	// The site's local clock decides "today" and the running shift.
+	var timezone, localToday string
+	var currentShift sql.NullString
+	if err := tx.QueryRowContext(ctx, `
+		SELECT st.timezone, to_char((now() AT TIME ZONE st.timezone)::date, 'YYYY-MM-DD'),
+			(SELECT sh.shift FROM shifts sh
+			 CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE st.timezone)::time AS t) local
+			 WHERE CASE WHEN sh.start_time < sh.end_time
+			            THEN local.t >= sh.start_time AND local.t < sh.end_time
+			            ELSE local.t >= sh.start_time OR local.t < sh.end_time END
+			 ORDER BY sh.start_time LIMIT 1)
+		FROM pipeline_items pi
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites st ON st.id = p.site_id
+		WHERE pi.id = $1
+	`, input.PipelineItemID).Scan(&timezone, &localToday, &currentShift); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, err
+	}
+	reportDate := input.ReportDate
+	if reportDate == "" {
+		reportDate = localToday
+	}
+	shift := input.Shift
+	if shift == "" {
+		// Only the running shift of today can be inferred; any other day needs it explicitly.
+		if reportDate != localToday || !currentShift.Valid {
+			return nil, fmt.Errorf("%w: shift is required for a report date other than today at the site", entity.ErrInvalidOperationalData)
+		}
+		shift = currentShift.String
+	}
 	var locked bool
-	if err := tx.QueryRowContext(ctx, `SELECT now() >= `+reportUploadCloseSQL("$2::date")+` FROM shifts sh WHERE sh.shift = $1`,
-		input.Shift, input.ReportDate).Scan(&locked); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT now() >= `+reportUploadCloseSQL("$2::date", "$3")+` FROM shifts sh WHERE sh.shift = $1`,
+		shift, reportDate, timezone).Scan(&locked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrNotFound
 		}
@@ -443,15 +501,16 @@ func (r *WorkflowRepositoryImpl) CreatePipelineReport(ctx context.Context, acces
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO pipeline_reports (pipeline_item_assignment_id, shift, report_date, status, status_revisi)
 		SELECT a.id, sh.shift, $4::date, $5,
-			CASE WHEN now() > `+reportShiftEndSQL("$4::date")+` THEN 'SUBMITTED' ELSE 'NONE' END
+			CASE WHEN now() > `+reportShiftEndSQL("$4::date", "st.timezone")+` THEN 'SUBMITTED' ELSE 'NONE' END
 		FROM pipeline_item_assignments a
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites st ON st.id = p.site_id
 		JOIN shifts sh ON sh.shift = $3
 		WHERE pi.id = $1 AND a.user_id = $2 AND a.is_active
 			AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE'
 		RETURNING id::text, status_revisi
-	`, input.PipelineItemID, access.UserID, input.Shift, input.ReportDate, status).Scan(&reportID, &revision); err != nil {
+	`, input.PipelineItemID, access.UserID, shift, reportDate, status).Scan(&reportID, &revision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrNotFound
 		}
@@ -488,10 +547,13 @@ func (r *WorkflowRepositoryImpl) UpdatePipelineReport(ctx context.Context, acces
 	var afterShift, locked bool
 	if err := tx.QueryRowContext(ctx, `
 		SELECT pr.status, pr.status_revisi,
-			now() > `+reportShiftEndSQL("pr.report_date")+`,
-			now() >= `+reportUploadCloseSQL("pr.report_date")+`
+			now() > `+reportShiftEndSQL("pr.report_date", "st.timezone")+`,
+			now() >= `+reportUploadCloseSQL("pr.report_date", "st.timezone")+`
 		FROM pipeline_reports pr
 		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites st ON st.id = p.site_id
 		JOIN shifts sh ON sh.shift = pr.shift
 		WHERE pr.id = $1 AND a.user_id = $2 AND a.is_active
 		FOR UPDATE OF pr
@@ -558,7 +620,11 @@ func writePipelineReportDetails(ctx context.Context, tx *sql.Tx, reportID string
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO pipeline_report_details
 			(pipeline_report_id, evidence_before, evidence_after, open_date, closed_date, note_category, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		VALUES ($1, $2, $3,
+			-- Times without an offset (photo EXIF) are wall-clock times at the site.
+			COALESCE($4::timestamptz, $8::timestamp AT TIME ZONE `+siteTimezoneOfReportSQL+`),
+			COALESCE($5::timestamptz, $9::timestamp AT TIME ZONE `+siteTimezoneOfReportSQL+`),
+			$6, $7)
 		ON CONFLICT (pipeline_report_id) DO UPDATE SET
 			evidence_before = COALESCE(EXCLUDED.evidence_before, pipeline_report_details.evidence_before),
 			evidence_after = COALESCE(EXCLUDED.evidence_after, pipeline_report_details.evidence_after),
@@ -567,7 +633,8 @@ func writePipelineReportDetails(ctx context.Context, tx *sql.Tx, reportID string
 			note_category = COALESCE(EXCLUDED.note_category, pipeline_report_details.note_category),
 			notes = COALESCE(EXCLUDED.notes, pipeline_report_details.notes),
 			updated_at = now()
-	`, reportID, input.EvidenceBefore, input.EvidenceAfter, input.OpenDate, input.ClosedDate, input.NoteCategory, input.Notes)
+	`, reportID, input.EvidenceBefore, input.EvidenceAfter, input.OpenDate, input.ClosedDate, input.NoteCategory, input.Notes,
+		input.OpenDateLocal, input.ClosedDateLocal)
 	return err
 }
 

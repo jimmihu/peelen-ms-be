@@ -1,6 +1,6 @@
 -- =====================================================================
 -- E2E RESET (development/testing only) - DIHASILKAN OTOMATIS, jangan diedit.
--- Sumber: 007_scoring.sql + seed_v3.sql + seed_scoring.sql (+ akhir 006).
+-- Sumber: 007_scoring.sql + seed_v3.sql (+ kolom 008) + seed_scoring.sql (+ akhir 006).
 -- Buat ulang dengan: make e2e-sql
 --
 -- PERINGATAN: menghapus SEMUA data di database ini lalu mengisi ulang.
@@ -201,6 +201,9 @@ ALTER TABLE pipeline_report_history
 -- Pipelines belong to a site (migration 006)
 ALTER TABLE pipelines ADD COLUMN IF NOT EXISTS site_id uuid REFERENCES sites(id);
 
+-- Zona waktu IANA per site (migration 008); jam shift & report_date dibaca di zona site
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS timezone varchar(64) NOT NULL DEFAULT 'Asia/Jakarta';
+
 INSERT INTO shifts (shift, start_time, end_time) VALUES
     ('DAY',     '08:00', '16:00'),
     ('EVENING', '16:00', '00:00'),
@@ -209,17 +212,19 @@ INSERT INTO shifts (shift, start_time, end_time) VALUES
 -- -----------------------------------------------------
 -- sites: 10 PLTU
 -- -----------------------------------------------------
-INSERT INTO sites (code, name, site_type) VALUES
-    ('PAITON',    'PLTU Paiton',          'PLTU'),
-    ('SURALAYA',  'PLTU Suralaya',        'PLTU'),
-    ('PACITAN',   'PLTU Pacitan',         'PLTU'),
-    ('TJB',       'PLTU Tanjung Jati B',  'PLTU'),
-    ('CIREBON',   'PLTU Cirebon',         'PLTU'),
-    ('REMBANG',   'PLTU Rembang',         'PLTU'),
-    ('LABUAN',    'PLTU Labuan',          'PLTU'),
-    ('PLBRATU',   'PLTU Pelabuhan Ratu',  'PLTU'),
-    ('ADIPALA',   'PLTU Adipala',         'PLTU'),
-    ('INDRAMAYU', 'PLTU Indramayu',       'PLTU');
+-- Semua PLTU ini di Jawa (WIB). Site di Kalimantan/Sulawesi/Bali pakai 'Asia/Makassar' (WITA),
+-- di Papua/Maluku 'Asia/Jayapura' (WIT).
+INSERT INTO sites (code, name, site_type, timezone) VALUES
+    ('PAITON',    'PLTU Paiton',          'PLTU', 'Asia/Jakarta'),
+    ('SURALAYA',  'PLTU Suralaya',        'PLTU', 'Asia/Jakarta'),
+    ('PACITAN',   'PLTU Pacitan',         'PLTU', 'Asia/Jakarta'),
+    ('TJB',       'PLTU Tanjung Jati B',  'PLTU', 'Asia/Jakarta'),
+    ('CIREBON',   'PLTU Cirebon',         'PLTU', 'Asia/Jakarta'),
+    ('REMBANG',   'PLTU Rembang',         'PLTU', 'Asia/Jakarta'),
+    ('LABUAN',    'PLTU Labuan',          'PLTU', 'Asia/Jakarta'),
+    ('PLBRATU',   'PLTU Pelabuhan Ratu',  'PLTU', 'Asia/Jakarta'),
+    ('ADIPALA',   'PLTU Adipala',         'PLTU', 'Asia/Jakarta'),
+    ('INDRAMAYU', 'PLTU Indramayu',       'PLTU', 'Asia/Jakarta');
 
 -- -----------------------------------------------------
 -- vendors: 5 vendor, masing-masing pegang 2 PLTU
@@ -472,7 +477,7 @@ WHERE w.username LIKE 'w.vnd%';
 CREATE TEMP TABLE report_plan ON COMMIT DROP AS
 WITH base AS (
     SELECT a.id AS assignment_id, a.user_id AS worker_id,
-           d::date AS report_date,
+           d::date AS report_date, st.timezone AS tz,
            (ARRAY['DAY', 'EVENING', 'NIGHT'])[(substring(w.username FROM 10 FOR 2)::int - 1) % 3 + 1] AS shift,
            -- Profil vendor supaya SLA & maturity bervariasi (bucket makin besar = makin buruk):
            --   VND-001 sangat baik (SLA tercapai), VND-004 sekitar target, VND-002 membaik,
@@ -492,17 +497,19 @@ WITH base AS (
     JOIN pipeline_items pia ON pia.id = a.pipeline_item_id
     JOIN pipelines pa ON pa.id = pia.pipeline_id
     JOIN vendors v ON v.id = pa.vendor_id
-    -- Dari awal kuartal lalu sampai hari ini: ada minggu, bulan, dan 1 kuartal penuh yang sudah selesai.
-    CROSS JOIN generate_series((date_trunc('quarter', current_date) - interval '3 months')::date, current_date, interval '1 day') AS d
+    JOIN sites st ON st.id = pa.site_id
+    -- Dari awal kuartal lalu sampai hari ini (di zona site): ada minggu, bulan, dan 1 kuartal penuh yang sudah selesai.
+    CROSS JOIN generate_series((date_trunc('quarter', current_date) - interval '3 months')::date,
+                               (now() AT TIME ZONE st.timezone)::date, interval '1 day') AS d
 ),
 planned AS (
     -- Hari sebelumnya dan shift hari ini yang sudah selesai saat seed dijalankan dianggap
     -- hari kerja normal; hanya shift hari ini yang masih berjalan yang belum banyak lapor.
     SELECT b.*,
-           CASE WHEN b.report_date < current_date OR (
+           CASE WHEN b.report_date < (now() AT TIME ZONE b.tz)::date OR (
                     (b.report_date + sh.end_time)
                       + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END
-                ) <= localtimestamp THEN
+                ) <= now() AT TIME ZONE b.tz THEN
                CASE WHEN b.bucket < 65 THEN 'ON_TIME'
                     WHEN b.bucket < 73 THEN 'LATE_UPLOAD'
                     WHEN b.bucket < 80 THEN 'PARTIAL_LATE'
@@ -519,10 +526,10 @@ planned AS (
     JOIN shifts sh ON sh.shift = b.shift
 )
 SELECT p.*,
-       (p.report_date + sh.start_time)::timestamptz AS started_at,
+       (p.report_date + sh.start_time) AT TIME ZONE p.tz AS started_at,
        ((p.report_date + sh.end_time)
            + CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END
-       )::timestamptz AS shift_end,
+       ) AT TIME ZONE p.tz AS shift_end,
        NULL::uuid AS report_id
 FROM planned p
 JOIN shifts sh ON sh.shift = p.shift
@@ -814,6 +821,7 @@ COMMIT;
 -- Cek cepat: site_id_nullable harus NO, jumlah data harus terisi.
 SELECT (SELECT is_nullable FROM information_schema.columns
         WHERE table_name = 'pipelines' AND column_name = 'site_id') AS site_id_nullable,
+       (SELECT string_agg(DISTINCT timezone, ', ') FROM sites) AS site_timezones,
        (SELECT count(*) FROM users)                     AS users,
        (SELECT count(*) FROM pipeline_item_assignments) AS assignments,
        (SELECT count(*) FROM pipeline_reports)          AS reports,

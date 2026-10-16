@@ -24,17 +24,42 @@ const (
 	exifTimeLayout = "2006:01:02 15:04:05"
 )
 
+// Capture is a photo's capture time. With HasOffset the camera recorded its UTC
+// offset and Time is an exact instant; otherwise Time is the wall-clock reading
+// (in time.UTC as a placeholder) and must be read in the zone where the photo
+// was taken.
+type Capture struct {
+	Time      time.Time
+	HasOffset bool
+}
+
 // CaptureTime returns when the photo was taken. A timestamp without an EXIF
 // offset is interpreted in loc. ok is false when the data is not a JPEG or
 // carries no usable capture time.
 func CaptureTime(data []byte, loc *time.Location) (captured time.Time, ok bool) {
+	c, ok := ReadCapture(data)
+	if !ok {
+		return time.Time{}, false
+	}
+	if c.HasOffset {
+		return c.Time, true
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	w := c.Time
+	return time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second(), 0, loc), true
+}
+
+// ReadCapture returns the photo's capture time and whether it carries an offset.
+func ReadCapture(data []byte) (Capture, bool) {
 	tiff := findTIFF(data)
 	if tiff == nil {
-		return time.Time{}, false
+		return Capture{}, false
 	}
 	order, ifd0, ok := tiffHeader(tiff)
 	if !ok {
-		return time.Time{}, false
+		return Capture{}, false
 	}
 	ifd0Tags := readIFD(tiff, order, ifd0)
 	dateTime, offset := "", ""
@@ -47,21 +72,18 @@ func CaptureTime(data []byte, loc *time.Location) (captured time.Time, ok bool) 
 		dateTime = ifd0Tags[tagDateTime].ascii(tiff, order)
 	}
 	if dateTime == "" {
-		return time.Time{}, false
+		return Capture{}, false
 	}
 	if offset != "" {
 		if parsed, err := time.Parse(exifTimeLayout+"-07:00", dateTime+offset); err == nil {
-			return parsed, true
+			return Capture{Time: parsed, HasOffset: true}, true
 		}
 	}
-	if loc == nil {
-		loc = time.UTC
-	}
-	parsed, err := time.ParseInLocation(exifTimeLayout, dateTime, loc)
+	parsed, err := time.ParseInLocation(exifTimeLayout, dateTime, time.UTC)
 	if err != nil {
-		return time.Time{}, false
+		return Capture{}, false
 	}
-	return parsed, true
+	return Capture{Time: parsed}, true
 }
 
 // findTIFF walks the JPEG markers up to the image data and returns the TIFF

@@ -3,10 +3,12 @@ package entity
 import "time"
 
 type Site struct {
-	ID        string    `json:"id"`
-	Code      string    `json:"code"`
-	Name      string    `json:"name"`
-	SiteType  *string   `json:"site_type,omitempty"`
+	ID       string  `json:"id"`
+	Code     string  `json:"code"`
+	Name     string  `json:"name"`
+	SiteType *string `json:"site_type,omitempty"`
+	// Timezone is the site's IANA zone (Asia/Jakarta, Asia/Makassar, Asia/Jayapura).
+	Timezone  string    `json:"timezone"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -64,6 +66,10 @@ type PipelineReportInput struct {
 	NoteCategory   *string    `json:"note_category"`
 	Notes          *string    `json:"notes"`
 	Reason         *string    `json:"reason"`
+	// Wall-clock photo times without an offset ("2006-01-02T15:04:05"), read in
+	// the site's time zone. Set by the upload handler from EXIF; not part of the API.
+	OpenDateLocal   *string `json:"-"`
+	ClosedDateLocal *string `json:"-"`
 }
 
 type InventoryReport struct {

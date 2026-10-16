@@ -189,6 +189,9 @@ ORDER BY 1, 2;
 | WK-3 | `GET /sla-scores/live?scope=WORKER&worker_id=<id worker lain>` | Tetap hanya hasil dirinya sendiri |
 | WK-4 | `GET /sla-scores?scope=VENDOR` | 403 |
 | WK-5 | `GET /maturity-levels?scope=WORKER` | Hanya dirinya |
+| WK-6 | `POST /pipeline-reports` hanya dengan `pipeline_item_id` | 201; `report_date` = hari ini dan `shift` = shift yang sedang berjalan di zona waktu site |
+| WK-7 | `POST /pipeline-reports` dengan `report_date` kemarin tanpa `shift` | 400 (`shift` wajib untuk tanggal selain hari ini) |
+| WK-8 | Super Admin `PATCH /sites/{id}` `timezone: "Asia/Makassar"`, lalu WK-6 di site itu | Shift & tanggal mengikuti WITA (1 jam lebih awal dari WIB) |
 
 ### Validasi umum
 
@@ -198,6 +201,7 @@ ORDER BY 1, 2;
 | V-2 | `POST /sla-rules` dengan total bobot 90 | 400 |
 | V-3 | `POST /sla-rules` dengan indikator `CONSISTENCY` | 400 (khusus maturity) |
 | V-4 | `POST /maturity-rules` tanpa `levels` | 201, level default terisi |
+| V-5 | `POST /sites` dengan `timezone: "WITA"` | 400 (harus nama IANA, mis. `Asia/Makassar`) |
 
 ## 5. Memeriksa angka
 

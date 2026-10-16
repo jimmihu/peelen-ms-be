@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
   cat <<'HEADER'
 -- =====================================================================
 -- E2E RESET (development/testing only) - DIHASILKAN OTOMATIS, jangan diedit.
--- Sumber: 007_scoring.sql + seed_v3.sql + seed_scoring.sql (+ akhir 006).
+-- Sumber: 007_scoring.sql + seed_v3.sql (+ kolom 008) + seed_scoring.sql (+ akhir 006).
 -- Buat ulang dengan: make e2e-sql
 --
 -- PERINGATAN: menghapus SEMUA data di database ini lalu mengisi ulang.
@@ -44,6 +44,7 @@ COMMIT;
 -- Cek cepat: site_id_nullable harus NO, jumlah data harus terisi.
 SELECT (SELECT is_nullable FROM information_schema.columns
         WHERE table_name = 'pipelines' AND column_name = 'site_id') AS site_id_nullable,
+       (SELECT string_agg(DISTINCT timezone, ', ') FROM sites) AS site_timezones,
        (SELECT count(*) FROM users)                     AS users,
        (SELECT count(*) FROM pipeline_item_assignments) AS assignments,
        (SELECT count(*) FROM pipeline_reports)          AS reports,

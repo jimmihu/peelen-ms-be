@@ -72,7 +72,8 @@ func (u *WorkflowUsecaseImpl) CreateSite(ctx context.Context, actor *entity.User
 		return nil, ErrForbidden
 	}
 	if !workflowCodePattern.MatchString(site.Code) || strings.TrimSpace(site.Name) == "" || len(site.Name) > 150 ||
-		site.SiteType != nil && len(*site.SiteType) > 30 || site.Status != "" && !validWorkflowStatus(site.Status) {
+		site.SiteType != nil && len(*site.SiteType) > 30 || site.Status != "" && !validWorkflowStatus(site.Status) ||
+		!validTimezone(site.Timezone) {
 		return nil, ErrInvalidOperationalData
 	}
 	site.Code = strings.ToUpper(strings.TrimSpace(site.Code))
@@ -84,13 +85,14 @@ func (u *WorkflowUsecaseImpl) UpdateSite(ctx context.Context, actor *entity.User
 	if !workflowSuperAdmin(actor) {
 		return nil, ErrForbidden
 	}
-	if !scopeUUIDPattern.MatchString(id) || site.Code == "" && site.Name == "" && site.SiteType == nil && site.Status == "" {
+	if !scopeUUIDPattern.MatchString(id) || site.Code == "" && site.Name == "" && site.SiteType == nil && site.Status == "" && site.Timezone == "" {
 		return nil, ErrInvalidOperationalData
 	}
 	if site.Code != "" && !workflowCodePattern.MatchString(site.Code) ||
 		site.Name != "" && (strings.TrimSpace(site.Name) == "" || len(site.Name) > 150) ||
 		site.SiteType != nil && len(*site.SiteType) > 30 ||
-		site.Status != "" && !validWorkflowStatus(site.Status) {
+		site.Status != "" && !validWorkflowStatus(site.Status) ||
+		!validTimezone(site.Timezone) {
 		return nil, ErrInvalidOperationalData
 	}
 	site.Code = strings.ToUpper(strings.TrimSpace(site.Code))
@@ -253,9 +255,13 @@ func (u *WorkflowUsecaseImpl) ListMyTasks(ctx context.Context, actor *entity.Use
 	if err := validateWorkflowActor(actor); err != nil {
 		return nil, err
 	}
-	parsed, err := parseReportDate(date)
-	if err != nil {
-		return nil, err
+	// No date: the repository uses today at each task's site.
+	var parsed time.Time
+	if date != "" {
+		var err error
+		if parsed, err = parseReportDate(date); err != nil {
+			return nil, err
+		}
 	}
 	return u.repository.ListMyTasks(ctx, operationalAccess(actor), parsed)
 }
@@ -284,15 +290,19 @@ func (u *WorkflowUsecaseImpl) CreatePipelineReport(ctx context.Context, actor *e
 	if err := validateWorkflowActor(actor); err != nil {
 		return nil, err
 	}
-	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || !validShift(input.Shift) ||
+	// shift and report_date are optional: the server then uses the running shift and
+	// today's date at the task's site.
+	if !scopeUUIDPattern.MatchString(input.PipelineItemID) || input.Shift != "" && !validShift(input.Shift) ||
 		!validReportStatus(input.Status) || !validNoteCategory(input.NoteCategory) {
 		return nil, ErrInvalidOperationalData
 	}
-	if input.Status == "COMPLETED" && (input.EvidenceAfter == nil || input.ClosedDate == nil) {
+	if input.Status == "COMPLETED" && (input.EvidenceAfter == nil || input.ClosedDate == nil && input.ClosedDateLocal == nil) {
 		return nil, fmt.Errorf("%w: evidence_after and closed_date are required to complete a report", ErrInvalidOperationalData)
 	}
-	if _, err := parseReportDate(input.ReportDate); err != nil {
-		return nil, err
+	if input.ReportDate != "" {
+		if _, err := parseReportDate(input.ReportDate); err != nil {
+			return nil, err
+		}
 	}
 	if input.ClosedDate != nil && input.OpenDate != nil && input.ClosedDate.Before(*input.OpenDate) {
 		return nil, ErrInvalidOperationalData
@@ -490,6 +500,19 @@ func validateReportFilter(filter *entity.ReportFilter) error {
 		}
 	}
 	return nil
+}
+
+// validTimezone accepts an empty value (keep / default) or an IANA zone name such as
+// Asia/Jakarta, Asia/Makassar, or Asia/Jayapura. Fixed offsets like "+08:00" are rejected.
+func validTimezone(value string) bool {
+	if value == "" {
+		return true
+	}
+	if !strings.Contains(value, "/") || len(value) > 64 {
+		return false
+	}
+	_, err := time.LoadLocation(value)
+	return err == nil
 }
 
 func parseReportDate(value string) (time.Time, error) {

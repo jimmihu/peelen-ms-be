@@ -22,7 +22,9 @@ func NewScoringRepository(db *sql.DB) repository.ScoringRepository {
 
 // taskDayFactsSQL builds one fact row per active assignment per day between
 // the given date parameters. It is the single definition used both to store
-// final facts and to compute live facts, so both always agree.
+// final facts and to compute live facts, so both always agree. Report dates and
+// shift times are wall-clock times at the pipeline's site, so shift ends are
+// converted with the site's time zone.
 func taskDayFactsSQL(fromParam, toParam int) string {
 	return fmt.Sprintf(`
 		SELECT a.id AS assignment_id, d::date AS report_date,
@@ -36,9 +38,10 @@ func taskDayFactsSQL(fromParam, toParam int) string {
 			coalesce(r.k3_finding, false) AS k3_finding,
 			coalesce(r.k3_finding_with_notes, false) AS k3_finding_with_notes
 		FROM generate_series($%[1]d::date, $%[2]d::date, interval '1 day') AS d
-		JOIN pipeline_item_assignments a ON a.is_active AND a.created_at::date <= d::date
+		JOIN pipeline_item_assignments a ON a.is_active
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id AND pi.status = 'ACTIVE'
 		JOIN pipelines p ON p.id = pi.pipeline_id AND p.status = 'ACTIVE'
+		JOIN sites st ON st.id = p.site_id
 		JOIN items i ON i.id = pi.item_id AND i.status = 'ACTIVE'
 		LEFT JOIN LATERAL (
 			SELECT bool_or(true) AS reported,
@@ -53,15 +56,20 @@ func taskDayFactsSQL(fromParam, toParam int) string {
 			FROM pipeline_reports pr
 			JOIN shifts sh ON sh.shift = pr.shift
 			LEFT JOIN pipeline_report_details det ON det.pipeline_report_id = pr.id
-			CROSS JOIN LATERAL (SELECT (pr.report_date + sh.end_time)
-				+ CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END AS shift_end) se
+			CROSS JOIN LATERAL (SELECT ((pr.report_date + sh.end_time)
+				+ CASE WHEN sh.end_time <= sh.start_time THEN interval '1 day' ELSE interval '0' END)
+				AT TIME ZONE st.timezone AS shift_end) se
 			WHERE pr.pipeline_item_assignment_id = a.id AND pr.report_date = d::date
-		) r ON true`, fromParam, toParam)
+		) r ON true
+		WHERE (a.created_at AT TIME ZONE st.timezone)::date <= d::date`, fromParam, toParam)
 }
 
-// lastFinalDateSQL is the latest date whose upload windows have all closed:
-// date + 1 day + the latest shift start must be in the past.
-const lastFinalDateSQL = `(localtimestamp - interval '1 day' - (SELECT coalesce(max(start_time), '00:00')::interval FROM shifts))::date`
+// lastFinalDateSQL is the latest date whose upload windows have all closed at
+// every site: date + 1 day + the latest shift start must be in the past in the
+// westernmost site's local time (the session zone covers a database without sites).
+const lastFinalDateSQL = `(SELECT (min(now() AT TIME ZONE z.tz) - interval '1 day'
+	- (SELECT coalesce(max(start_time), '00:00')::interval FROM shifts))::date
+	FROM (SELECT timezone AS tz FROM sites UNION SELECT current_setting('TimeZone')) z)`
 
 // factsThroughSQL is the last date whose facts are stored; before any
 // finalization it is a date earlier than all data.
@@ -147,8 +155,9 @@ func (r *ScoringRepositoryImpl) AggregateFacts(ctx context.Context, q entity.Fac
 				live.completed, live.on_time, live.late_minutes, live.late_upload, live.evidence_complete,
 				live.k3_finding, live.k3_finding_with_notes
 			FROM (` + taskDayFactsSQL(1, 2) + `) live, last_final
-			-- Live facts stop at today: future days of a running period have no tasks yet.
-			WHERE live.report_date > last_final.day AND live.report_date <= current_date
+			-- Live facts stop at today at the site: future days of a running period have no tasks yet.
+			WHERE live.report_date > last_final.day
+				AND live.report_date <= (SELECT (now() AT TIME ZONE timezone)::date FROM sites WHERE id = live.site_id)
 		),
 		scoped AS (
 			SELECT * FROM facts
