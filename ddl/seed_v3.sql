@@ -77,6 +77,24 @@ ALTER TABLE pipelines ADD COLUMN IF NOT EXISTS site_id uuid REFERENCES sites(id)
 -- Zona waktu IANA per site (migration 008); jam shift & report_date dibaca di zona site
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS timezone varchar(64) NOT NULL DEFAULT 'Asia/Jakarta';
 
+-- Revisi laporan oleh worker (migration 009)
+ALTER TABLE pipeline_reports ADD COLUMN IF NOT EXISTS revision_count integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS pipeline_report_revisions (
+    id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    pipeline_report_id uuid NOT NULL REFERENCES pipeline_reports(id) ON DELETE RESTRICT,
+    revision_no        integer NOT NULL CHECK (revision_no >= 0),
+    evidence_before    text,
+    evidence_after     text,
+    open_date          timestamptz,
+    closed_date        timestamptz,
+    note_category      varchar(30),
+    notes              text,
+    revised_by         uuid REFERENCES users(id) ON DELETE SET NULL,
+    reason             text,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (pipeline_report_id, revision_no)
+);
+
 INSERT INTO shifts (shift, start_time, end_time) VALUES
     ('DAY',     '08:00', '16:00'),
     ('EVENING', '16:00', '00:00'),

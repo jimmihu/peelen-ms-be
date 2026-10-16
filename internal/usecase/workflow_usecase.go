@@ -34,6 +34,8 @@ type WorkflowUsecase interface {
 	GetPipelineReport(context.Context, *entity.User, string) (*entity.PipelineReport, error)
 	CreatePipelineReport(context.Context, *entity.User, entity.PipelineReportInput) (*entity.PipelineReport, error)
 	UpdatePipelineReport(context.Context, *entity.User, string, entity.PipelineReportInput) (*entity.PipelineReport, error)
+	RevisePipelineReport(context.Context, *entity.User, string, entity.PipelineReportInput) (*entity.PipelineReport, error)
+	ListPipelineReportRevisions(context.Context, *entity.User, string) ([]entity.PipelineReportRevision, error)
 	ListInventoryReports(context.Context, *entity.User, entity.ReportFilter) ([]entity.InventoryReport, int, error)
 	GetInventoryReport(context.Context, *entity.User, string) (*entity.InventoryReport, error)
 	CreateInventoryReport(context.Context, *entity.User, entity.InventoryReportInput) (*entity.InventoryReport, error)
@@ -348,6 +350,38 @@ func (u *WorkflowUsecaseImpl) UpdatePipelineReport(ctx context.Context, actor *e
 		return nil, ErrInvalidOperationalData
 	}
 	return u.repository.UpdatePipelineReport(ctx, operationalAccess(actor), id, input)
+}
+
+// RevisePipelineReport replaces a completed report's evidence with new before
+// and after photos (both required); the previous version is archived. A Worker
+// may revise as often as wanted while the upload window is open.
+func (u *WorkflowUsecaseImpl) RevisePipelineReport(ctx context.Context, actor *entity.User, id string, input entity.PipelineReportInput) (*entity.PipelineReport, error) {
+	if err := validateWorkflowActor(actor); err != nil {
+		return nil, err
+	}
+	if !scopeUUIDPattern.MatchString(id) {
+		return nil, ErrNotFound
+	}
+	if !hasRole(actor, "WORKER") {
+		return nil, ErrForbidden
+	}
+	if input.EvidenceBefore == nil || input.EvidenceAfter == nil ||
+		(input.OpenDate == nil && input.OpenDateLocal == nil) ||
+		(input.ClosedDate == nil && input.ClosedDateLocal == nil) ||
+		!validNoteCategory(input.NoteCategory) ||
+		input.ClosedDate != nil && input.OpenDate != nil && input.ClosedDate.Before(*input.OpenDate) {
+		return nil, fmt.Errorf("%w: a revision needs new evidence_before and evidence_after photos with their times", ErrInvalidOperationalData)
+	}
+	return u.repository.RevisePipelineReport(ctx, operationalAccess(actor), id, input)
+}
+
+// ListPipelineReportRevisions returns the earlier versions of a report the
+// actor can read, oldest first.
+func (u *WorkflowUsecaseImpl) ListPipelineReportRevisions(ctx context.Context, actor *entity.User, id string) ([]entity.PipelineReportRevision, error) {
+	if _, err := u.GetPipelineReport(ctx, actor, id); err != nil {
+		return nil, err
+	}
+	return u.repository.ListPipelineReportRevisions(ctx, id)
 }
 
 // validReportStatus accepts the Worker-settable pipeline report statuses;

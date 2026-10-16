@@ -231,20 +231,63 @@ func (h *WorkflowHandler) GetPipelineReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+// RevisePipelineReport: `POST /pipeline-reports/{id}/revisions`, multipart with
+// new evidence_before and evidence_after photos (both required), optional
+// note_category, notes and reason.
+func (h *WorkflowHandler) RevisePipelineReport(c *gin.Context) {
+	input, uploaded, ok := h.bindPipelineReportInput(c)
+	defer removeMultipartForm(c)
+	if !ok {
+		return
+	}
+	result, err := h.usecase.RevisePipelineReport(c.Request.Context(), currentUser(c), c.Param("id"), input)
+	if err != nil {
+		h.removeUploadedEvidence(uploaded)
+		handleWorkflowError(c, err)
+		return
+	}
+	h.signReportEvidence(c, result)
+	c.JSON(http.StatusCreated, gin.H{"data": result})
+}
+
+// ListPipelineReportRevisions: `GET /pipeline-reports/{id}/revisions`, the
+// earlier versions of a report (0 = original), oldest first.
+func (h *WorkflowHandler) ListPipelineReportRevisions(c *gin.Context) {
+	result, err := h.usecase.ListPipelineReportRevisions(c.Request.Context(), currentUser(c), c.Param("id"))
+	if err != nil {
+		handleWorkflowError(c, err)
+		return
+	}
+	for i := range result {
+		h.signEvidencePair(c, result[i].EvidenceBefore, result[i].EvidenceAfter,
+			&result[i].EvidenceBeforeURL, &result[i].EvidenceAfterURL)
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 // signReportEvidence adds signed download URLs for the report's evidence photos
 // (stored as object keys). A photo that cannot be signed keeps only its key.
 func (h *WorkflowHandler) signReportEvidence(c *gin.Context, report *entity.PipelineReport) {
-	if h.objectStorage == nil || report == nil {
+	if report == nil {
 		return
 	}
-	for _, photo := range []struct{ key, url **string }{
-		{&report.EvidenceBefore, &report.EvidenceBeforeURL},
-		{&report.EvidenceAfter, &report.EvidenceAfterURL},
-	} {
-		if *photo.key == nil || **photo.key == "" {
+	h.signEvidencePair(c, report.EvidenceBefore, report.EvidenceAfter,
+		&report.EvidenceBeforeURL, &report.EvidenceAfterURL)
+}
+
+// signEvidencePair signs a before/after pair of object keys into the URL fields.
+func (h *WorkflowHandler) signEvidencePair(c *gin.Context, before, after *string, beforeURL, afterURL **string) {
+	if h.objectStorage == nil {
+		return
+	}
+	for _, photo := range []struct {
+		key *string
+		url **string
+	}{{before, beforeURL}, {after, afterURL}} {
+		if photo.key == nil || *photo.key == "" {
 			continue
 		}
-		signed, err := h.objectStorage.SignedDownloadURL(c.Request.Context(), **photo.key, policyDownloadExpiry)
+		signed, err := h.objectStorage.SignedDownloadURL(c.Request.Context(), *photo.key, policyDownloadExpiry)
 		if err != nil {
 			_ = c.Error(err)
 			continue
