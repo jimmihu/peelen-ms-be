@@ -280,6 +280,9 @@ func (u *WorkflowUsecaseImpl) ListPipelineReports(ctx context.Context, actor *en
 	if err := validateReportFilter(&filter); err != nil {
 		return nil, 0, err
 	}
+	if filter.NoteCategory != "" && filter.NoteCategory != "ANY" && !validNoteCategory(&filter.NoteCategory) {
+		return nil, 0, fmt.Errorf("%w: note_category must be NEAR_MISS, UNSAFE_ACTION, UNSAFE_CONDITION or ANY", ErrInvalidOperationalData)
+	}
 	return u.repository.ListPipelineReports(ctx, operationalAccess(actor), filter)
 }
 
