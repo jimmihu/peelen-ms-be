@@ -124,10 +124,9 @@ func canWriteOperational(actor *entity.User, resource entity.OperationalResource
 		return hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER")
 	case entity.ResourceItem:
 		return hasRole(actor, "SUPER_ADMIN")
-	case entity.ResourcePipeline:
+	case entity.ResourcePipeline, entity.ResourcePipelineItem:
+		// Admin Workers only read pipelines and their items.
 		return hasRole(actor, "SUPER_ADMIN", "ADMIN")
-	case entity.ResourcePipelineItem:
-		return hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER")
 	default:
 		return false
 	}

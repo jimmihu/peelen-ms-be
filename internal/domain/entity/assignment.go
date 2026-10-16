@@ -12,6 +12,7 @@ type Assignment struct {
 	VendorID       string    `json:"vendor_id"`
 	UserID         string    `json:"user_id"`
 	Username       string    `json:"username"`
+	UserFullName   *string   `json:"user_full_name"`
 	IsActive       bool      `json:"is_active"`
 	AssignedBy     *string   `json:"assigned_by,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`

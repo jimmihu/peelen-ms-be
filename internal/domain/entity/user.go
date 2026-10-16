@@ -31,3 +31,14 @@ type UserScope struct {
 	Code string `json:"code"`
 	Name string `json:"name"`
 }
+
+// ManagedUserScope limits which accounts a manager may see and manage. The zero
+// value means every account (Super Admin).
+type ManagedUserScope struct {
+	// Role is the only role the managed accounts may have ("" = any).
+	Role string
+	// VendorID: the managed accounts belong to this vendor.
+	VendorID string
+	// SiteIDs: the managed accounts belong to a vendor operating at one of these sites.
+	SiteIDs []string
+}

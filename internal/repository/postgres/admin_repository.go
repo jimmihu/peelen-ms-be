@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"peelen-ms-be/internal/domain/entity"
@@ -22,18 +23,38 @@ func NewAdminRepository(db *sql.DB) repository.AdminRepository {
 	return &AdminRepositoryImpl{db: db}
 }
 
-func (r *AdminRepositoryImpl) ListManagedUsers(ctx context.Context, vendorID string) ([]*entity.User, error) {
-	query := `SELECT ` + userColumns + ` FROM users`
-	args := []any{}
-	if vendorID != "" {
-		query += ` WHERE EXISTS (
-			SELECT 1 FROM user_roles ur JOIN roles ro ON ro.id = ur.role_id
-			JOIN user_scopes us ON us.user_id = ur.user_id
-			WHERE ur.user_id = users.id AND ro.code = 'WORKER' AND us.vendor_id = $1
-		)`
-		args = append(args, vendorID)
+// managedUserFilter is the SQL condition on users for a manager's scope; args
+// continue after the given ones.
+func managedUserFilter(scope entity.ManagedUserScope, args []any) (string, []any) {
+	var conditions []string
+	if scope.Role != "" {
+		args = append(args, scope.Role)
+		// Only accounts whose roles are exactly this one role.
+		conditions = append(conditions, fmt.Sprintf(`EXISTS (SELECT 1 FROM user_roles ur JOIN roles ro ON ro.id = ur.role_id
+			WHERE ur.user_id = users.id AND ro.code = $%[1]d)
+			AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles ro ON ro.id = ur.role_id
+			WHERE ur.user_id = users.id AND ro.code <> $%[1]d)`, len(args)))
 	}
-	query += ` ORDER BY created_at DESC`
+	if scope.VendorID != "" {
+		args = append(args, scope.VendorID)
+		conditions = append(conditions, fmt.Sprintf(
+			`EXISTS (SELECT 1 FROM user_scopes us WHERE us.user_id = users.id AND us.vendor_id = $%d)`, len(args)))
+	}
+	if scope.SiteIDs != nil {
+		args = append(args, pq.Array(scope.SiteIDs))
+		conditions = append(conditions, fmt.Sprintf(`EXISTS (SELECT 1 FROM user_scopes us
+			JOIN vendor_sites vs ON vs.vendor_id = us.vendor_id
+			WHERE us.user_id = users.id AND vs.site_id = ANY($%d::uuid[]))`, len(args)))
+	}
+	if len(conditions) == 0 {
+		return "true", args
+	}
+	return strings.Join(conditions, " AND "), args
+}
+
+func (r *AdminRepositoryImpl) ListManagedUsers(ctx context.Context, scope entity.ManagedUserScope) ([]*entity.User, error) {
+	where, args := managedUserFilter(scope, nil)
+	query := `SELECT ` + userColumns + ` FROM users WHERE ` + where + ` ORDER BY created_at DESC`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -53,17 +74,9 @@ func (r *AdminRepositoryImpl) ListManagedUsers(ctx context.Context, vendorID str
 	return users, rows.Err()
 }
 
-func (r *AdminRepositoryImpl) GetManagedUser(ctx context.Context, userID, vendorID string) (*entity.User, error) {
-	query := `SELECT ` + userColumns + ` FROM users WHERE id = $1`
-	args := []any{userID}
-	if vendorID != "" {
-		query += ` AND EXISTS (
-			SELECT 1 FROM user_roles ur JOIN roles ro ON ro.id = ur.role_id
-			JOIN user_scopes us ON us.user_id = ur.user_id
-			WHERE ur.user_id = users.id AND ro.code = 'WORKER' AND us.vendor_id = $2
-		)`
-		args = append(args, vendorID)
-	}
+func (r *AdminRepositoryImpl) GetManagedUser(ctx context.Context, userID string, scope entity.ManagedUserScope) (*entity.User, error) {
+	where, args := managedUserFilter(scope, []any{userID})
+	query := `SELECT ` + userColumns + ` FROM users WHERE id = $1 AND ` + where
 	user, err := scanUser(r.db.QueryRowContext(ctx, query, args...))
 	if err != nil || user == nil {
 		return user, err
@@ -72,6 +85,15 @@ func (r *AdminRepositoryImpl) GetManagedUser(ctx context.Context, userID, vendor
 		return nil, err
 	}
 	return user, nil
+}
+
+// VendorOperatesAtSites reports whether the vendor works at one of the sites.
+func (r *AdminRepositoryImpl) VendorOperatesAtSites(ctx context.Context, vendorID string, siteIDs []string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM vendor_sites WHERE vendor_id = $1::uuid AND site_id = ANY($2::uuid[]))`,
+		vendorID, pq.Array(siteIDs)).Scan(&ok)
+	return ok, err
 }
 
 func (r *AdminRepositoryImpl) CreateManagedUser(ctx context.Context, user *entity.User, roles, siteIDs, vendorIDs []string, assignedBy, ipAddress string) error {

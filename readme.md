@@ -122,9 +122,9 @@ Auth > Login first, then set valid vendor/site IDs in the collection variables.
 | POST | `/auth/logout-all` | Authenticated; revokes all of the caller's sessions |
 | GET | `/auth/me` | Authenticated; returns profile, current roles and scopes |
 | PUT | `/auth/password` | Authenticated; changes own password and revokes sessions |
-| GET, POST | `/users` | Super Admin; Admin Worker sees/creates workers in own vendor |
-| GET, PATCH | `/users/{id}` | Super Admin; Admin Worker limited to own vendor's workers |
-| POST | `/users/{id}/reset-password` | Super Admin; Admin Worker limited to own vendor's workers |
+| GET, POST | `/users` | Super Admin; Admin sees/creates Admin Workers of vendors at own sites (`vendor_ids` = one such vendor); Admin Worker sees/creates Workers in own vendor |
+| GET, PATCH | `/users/{id}` | Super Admin; Admin and Admin Worker limited to the accounts above |
+| POST | `/users/{id}/reset-password` | Super Admin; Admin and Admin Worker limited to the accounts above |
 | PUT | `/users/{id}/roles` | Super Admin |
 | PUT | `/users/{id}/scopes` | Super Admin |
 | DELETE | `/users/{id}/sessions` | Super Admin |
@@ -156,11 +156,11 @@ Auth > Login first, then set valid vendor/site IDs in the collection variables.
 | GET, PATCH, DELETE | `/items/{id}` | All roles read assigned/in-scope items; SA writes |
 | GET, POST | `/pipelines` | All roles read in scope; SA and Admin write |
 | GET, PATCH, DELETE | `/pipelines/{id}` | All roles read in scope; SA and Admin write |
-| GET, POST | `/pipelines/{id}/items` | All roles read assigned/in-scope tasks; SA, Admin, Admin Worker write |
-| GET, PATCH, DELETE | `/pipeline-items/{id}` | All roles read assigned/in-scope tasks; SA, Admin, Admin Worker write |
+| GET, POST | `/pipelines/{id}/items` | All roles read assigned/in-scope tasks; SA and Admin write (Admin Worker read only) |
+| GET, PATCH, DELETE | `/pipeline-items/{id}` | All roles read assigned/in-scope tasks; SA and Admin write (Admin Worker read only) |
 
 Operational list endpoints accept `page` (default `1`), `limit` (default `20`,
-maximum `100`), `status` (default `ACTIVE`), and `q`; vendor-scoped resources also
+maximum `100`), `status` (default `ACTIVE`; `ALL` for active and inactive), and `q`; vendor-scoped resources also
 accept `vendor_id` and `site_id`. Inventory lists additionally accept
 `status_condition`. Responses use `{ "data": [], "page": 1, "limit": 20, "total": 0 }`.
 DELETE operations on operational master records set status to `INACTIVE`.
@@ -358,7 +358,7 @@ into SLA scores and maturity levels per vendor, per vendor site, and per worker.
 | `POST /sla-rules`, `POST /maturity-rules` | Create a new version |
 | `GET`/`DELETE /sla-rules/{id}`, `/maturity-rules/{id}` | Read / deactivate a version |
 | `GET /sla-scores/live`, `GET /maturity-levels/live` | Running period (`scope`, `vendor_id`, `site_id` for SITE/WORKER, `worker_id` for WORKER) |
-| `GET /sla-scores`, `GET /maturity-levels` | Frozen periods (`scope`, `vendor_id`, `site_id`, `worker_id`, `from`, `to`, `page`, `limit`) |
+| `GET /sla-scores`, `GET /maturity-levels` | Frozen periods (`scope`, `vendor_id`, `site_id`, `worker_id`, `from`, `to`, `page`, `limit`); `from`/`to` bound the period start (`YYYY-MM-DD`, both inclusive, default the last year) |
 
 ```http
 POST /api/v1/sla-rules

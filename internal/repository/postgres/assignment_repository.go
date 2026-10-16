@@ -145,7 +145,7 @@ func (r *AssignmentRepositoryImpl) SetAssignmentActive(ctx context.Context, acce
 func (r *AssignmentRepositoryImpl) queryAssignments(ctx context.Context, whereSQL string, args []any) ([]entity.Assignment, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name, p.vendor_id::text,
-			u.id::text, u.username, a.is_active, a.assigned_by::text, a.created_at, a.updated_at
+			u.id::text, u.username, u.full_name, a.is_active, a.assigned_by::text, a.created_at, a.updated_at
 		FROM `+assignmentFrom+` WHERE `+whereSQL, args...)
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (r *AssignmentRepositoryImpl) queryAssignments(ctx context.Context, whereSQ
 		var assignment entity.Assignment
 		var assignedBy sql.NullString
 		if err := rows.Scan(&assignment.ID, &assignment.PipelineItemID, &assignment.PipelineID, &assignment.PipelineName,
-			&assignment.ItemID, &assignment.ItemName, &assignment.VendorID, &assignment.UserID, &assignment.Username,
+			&assignment.ItemID, &assignment.ItemName, &assignment.VendorID, &assignment.UserID, &assignment.Username, &assignment.UserFullName,
 			&assignment.IsActive, &assignedBy, &assignment.CreatedAt, &assignment.UpdatedAt); err != nil {
 			return nil, err
 		}

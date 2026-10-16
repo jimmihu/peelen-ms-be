@@ -300,11 +300,12 @@ func (r *ScoringRepositoryImpl) SaveResult(ctx context.Context, res entity.Score
 }
 
 func (r *ScoringRepositoryImpl) ListResults(ctx context.Context, f entity.ResultFilter) ([]entity.ScoreResult, int, error) {
-	where := `kind = $1 AND scope_type = $2 AND period_start >= $3 AND period_start < $4
+	// from and to bound the period start, both inclusive, as calendar dates.
+	where := `kind = $1 AND scope_type = $2 AND period_start >= $3::date AND period_start <= $4::date
 		AND ($5 = '' OR vendor_id::text = $5) AND ($6 = '' OR site_id::text = $6) AND ($7 = '' OR worker_id::text = $7)
 		AND ($8 OR vendor_id = ANY($9::uuid[]) OR site_id = ANY($10::uuid[]))
 		AND ($11 = '' OR worker_id::text = $11)`
-	args := []any{f.Kind, f.Scope, f.From, f.To, f.VendorID, f.SiteID, f.WorkerID,
+	args := []any{f.Kind, f.Scope, f.From.Format("2006-01-02"), f.To.Format("2006-01-02"), f.VendorID, f.SiteID, f.WorkerID,
 		f.AllVendors, pq.Array(f.VendorIDs), pq.Array(f.SiteIDs), f.OnlyWorkerID}
 	var total int
 	if err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM score_period_results WHERE `+where, args...).Scan(&total); err != nil {

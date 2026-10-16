@@ -527,9 +527,14 @@ func operationalFilterFromQuery(c *gin.Context) (entity.OperationalFilter, error
 			return entity.OperationalFilter{}, errors.New("limit must be between 1 and 100")
 		}
 	}
+	// Lists show active records unless asked; status=ALL includes inactive ones
+	// (master data screens that reactivate them).
 	status := strings.ToUpper(c.Query("status"))
-	if status == "" {
+	switch status {
+	case "":
 		status = "ACTIVE"
+	case "ALL":
+		status = ""
 	}
 	return entity.OperationalFilter{
 		VendorID: c.Query("vendor_id"), SiteID: c.Query("site_id"),

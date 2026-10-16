@@ -343,7 +343,7 @@ func (u *ScoringUsecaseImpl) ListResults(ctx context.Context, actor *entity.User
 		f.Limit = 20
 	}
 	if f.To.IsZero() {
-		f.To = u.Clock().AddDate(0, 0, 1)
+		f.To = u.Clock() // inclusive: periods starting today
 	}
 	if f.From.IsZero() {
 		f.From = f.To.AddDate(-1, 0, 0)

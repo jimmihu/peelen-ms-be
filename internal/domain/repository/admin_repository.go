@@ -14,8 +14,9 @@ var (
 )
 
 type AdminRepository interface {
-	ListManagedUsers(ctx context.Context, vendorID string) ([]*entity.User, error)
-	GetManagedUser(ctx context.Context, userID, vendorID string) (*entity.User, error)
+	ListManagedUsers(ctx context.Context, scope entity.ManagedUserScope) ([]*entity.User, error)
+	GetManagedUser(ctx context.Context, userID string, scope entity.ManagedUserScope) (*entity.User, error)
+	VendorOperatesAtSites(ctx context.Context, vendorID string, siteIDs []string) (bool, error)
 	CreateManagedUser(ctx context.Context, user *entity.User, roles []string, siteIDs, vendorIDs []string, assignedBy, ipAddress string) error
 	UpdateManagedUser(ctx context.Context, user *entity.User, actorID string, ipAddress string) error
 	SetUserRoles(ctx context.Context, userID string, roles []string, assignedBy, ipAddress string) error
