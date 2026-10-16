@@ -225,8 +225,9 @@ hours and `report_date` are wall-clock times at the pipeline's site, and all
 stored timestamps are absolute (`timestamptz`), so WIB, WITA and WIT sites are
 compared correctly. Without `report_date` the server uses today at the site;
 without `shift` it uses the shift running now at the site. A `report_date` other
-than today requires `shift`. `GET /my-tasks` without `date` likewise lists today
-at each task's site.
+than today requires `shift`. `GET /me/tasks` without `date` likewise lists today
+at each task's site. Tasks and pipeline reports include `site_id`, `site_name` and
+`site_timezone` so clients can show times on the site's clock.
 
 `status_revisi` is set by the server: `NONE` while the report is sent within its
 shift, `SUBMITTED` once it is created or changed after the shift ends (late upload,

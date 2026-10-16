@@ -341,8 +341,9 @@ func nullDate(value time.Time) any {
 func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.OperationalAccess, reportDate time.Time) ([]entity.MyTask, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id::text, pi.id::text, p.id::text, p.name, i.id::text, i.name,
-			p.vendor_id::text, pr.shift, to_char(day.d, 'YYYY-MM-DD'),
-			pr.id::text, pr.status, pr.status_revisi
+			p.vendor_id::text, st.id::text, st.name, st.timezone,
+			pr.shift, to_char(sh.start_time, 'HH24:MI'), to_char(sh.end_time, 'HH24:MI'),
+			to_char(day.d, 'YYYY-MM-DD'), pr.id::text, pr.status, pr.status_revisi
 		FROM pipeline_item_assignments a
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
@@ -351,6 +352,7 @@ func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.
 		CROSS JOIN LATERAL (SELECT coalesce($2::date, (now() AT TIME ZONE st.timezone)::date) AS d) day
 		JOIN items i ON i.id = pi.item_id
 		LEFT JOIN pipeline_reports pr ON pr.pipeline_item_assignment_id = a.id AND pr.report_date = day.d
+		LEFT JOIN shifts sh ON sh.shift = pr.shift
 		WHERE a.user_id = $1 AND a.is_active AND pi.status = 'ACTIVE' AND p.status = 'ACTIVE' AND i.status = 'ACTIVE'
 		ORDER BY p.name, pi.sort_order, i.name, pr.shift
 	`, access.UserID, nullDate(reportDate))
@@ -361,13 +363,15 @@ func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.
 	tasks := make([]entity.MyTask, 0)
 	for rows.Next() {
 		var task entity.MyTask
-		var shift, reportID, reportStatus, statusRevisi sql.NullString
+		var shift, shiftStart, shiftEnd, reportID, reportStatus, statusRevisi sql.NullString
 		if err := rows.Scan(&task.AssignmentID, &task.PipelineItemID, &task.PipelineID, &task.PipelineName,
-			&task.ItemID, &task.ItemName, &task.VendorID, &shift, &task.ReportDate,
-			&reportID, &reportStatus, &statusRevisi); err != nil {
+			&task.ItemID, &task.ItemName, &task.VendorID, &task.SiteID, &task.SiteName, &task.SiteTimezone,
+			&shift, &shiftStart, &shiftEnd, &task.ReportDate, &reportID, &reportStatus, &statusRevisi); err != nil {
 			return nil, err
 		}
 		task.Shift = nullStringPtr(shift)
+		task.ShiftStart = nullStringPtr(shiftStart)
+		task.ShiftEnd = nullStringPtr(shiftEnd)
 		task.ReportID = nullStringPtr(reportID)
 		task.ReportStatus = nullStringPtr(reportStatus)
 		task.StatusRevisi = nullStringPtr(statusRevisi)
@@ -864,6 +868,7 @@ func queryPipelineReports(ctx context.Context, db *sql.DB, whereSQL string, args
 		JOIN users u ON u.id = a.user_id
 		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
 		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites rs ON rs.id = p.site_id
 		JOIN items i ON i.id = pi.item_id
 		LEFT JOIN pipeline_report_details d ON d.pipeline_report_id = pr.id`
 	var total int
@@ -873,7 +878,7 @@ func queryPipelineReports(ctx context.Context, db *sql.DB, whereSQL string, args
 	args = append(args, limit, (page-1)*limit)
 	rows, err := db.QueryContext(ctx, `
 		SELECT pr.id::text, a.id::text, pi.id::text, p.id::text, i.id::text, i.name, p.vendor_id::text,
-			u.id::text, u.username, pr.shift, to_char(pr.report_date, 'YYYY-MM-DD'),
+			u.id::text, u.username, rs.id::text, rs.name, rs.timezone, pr.shift, to_char(pr.report_date, 'YYYY-MM-DD'),
 			pr.status, pr.status_revisi, d.evidence_before, d.evidence_after,
 			d.open_date, d.closed_date, d.note_category, d.notes, pr.created_at, pr.updated_at
 		FROM `+from+" WHERE "+whereSQL+
@@ -898,7 +903,8 @@ func scanPipelineReport(row interface{ Scan(...any) error }) (entity.PipelineRep
 	var evidenceBefore, evidenceAfter, noteCategory, notes sql.NullString
 	var openDate, closedDate sql.NullTime
 	err := row.Scan(&report.ID, &report.PipelineItemAssignmentID, &report.PipelineItemID, &report.PipelineID, &report.ItemID,
-		&report.ItemName, &report.VendorID, &report.UserID, &report.Username, &report.Shift,
+		&report.ItemName, &report.VendorID, &report.UserID, &report.Username,
+		&report.SiteID, &report.SiteName, &report.SiteTimezone, &report.Shift,
 		&report.ReportDate, &report.Status, &report.StatusRevisi, &evidenceBefore, &evidenceAfter,
 		&openDate, &closedDate, &noteCategory, &notes, &report.CreatedAt, &report.UpdatedAt)
 	if err != nil {
