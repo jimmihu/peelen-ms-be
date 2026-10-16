@@ -15,18 +15,21 @@ type DashboardFilter struct {
 }
 
 type DashboardTaskSummary struct {
-	TotalTask  int64 `json:"total_task"`
-	InProgress int64 `json:"in_progress"`
-	Completed  int64 `json:"completed"`
-	NotStarted int64 `json:"pending"`
+	TargetPekerjaan int64 `json:"target_pekerjaan"`
+	TotalArea       int64 `json:"total_area"`
+	TotalPoint      int64 `json:"total_point"`
+	InProgress      int64 `json:"in_progress"`
+	Completed       int64 `json:"completed"`
+	NotStarted      int64 `json:"pending"`
 }
 
 type DashboardResponse struct {
-	Filter          DashboardFilter                  `json:"filter"`
-	TaskSummary     DashboardTaskSummary             `json:"task_summary"`
-	VendorProgress  []DashboardVendorProgressSummary `json:"vendor_progress"`
-	InventoryReport []DashboardInventoryReport       `json:"inventory_reports"`
-	SafetyReports   []DashboardSafetyReport          `json:"safety_reports"`
+	Filter             DashboardFilter                  `json:"filter"`
+	TaskSummary        DashboardTaskSummary             `json:"task_summary"`
+	VendorProgress     []DashboardVendorProgressSummary `json:"vendor_progress"`
+	VendorUnassignments []DashboardVendorUnassignment   `json:"vendor_unassignments"`
+	InventoryReport    []DashboardInventoryReport      `json:"inventory_reports"`
+	SafetyReports      []DashboardSafetyReport         `json:"safety_reports"`
 }
 
 type DashboardSummaryResponse = DashboardResponse
@@ -36,7 +39,10 @@ type DashboardVendorProgressSummary struct {
 	SiteName           string  `json:"site_name"`
 	VendorID           string  `json:"vendor_id"`
 	VendorName         string  `json:"vendor_name"`
-	TotalTask          int64   `json:"total_task"`
+	TargetPekerjaan    int64   `json:"target_pekerjaan"`
+	TotalPenugasan     int64   `json:"total_penugasan"`
+	TotalArea          int64   `json:"total_area"`
+	TotalPoint         int64   `json:"total_point"`
 	Completed          int64   `json:"completed"`
 	InProgress         int64   `json:"in_progress"`
 	NotStarted         int64   `json:"pending"`
@@ -45,19 +51,51 @@ type DashboardVendorProgressSummary struct {
 
 type DashboardVendorProgress struct {
 	SiteID               string          `json:"site_id"`
-	SiteName             string          `json:"site_name"`
-	VendorID             string          `json:"vendor_id"`
-	VendorName           string          `json:"vendor_name"`
-	TotalTask            int64           `json:"total_task"`
-	Completed            int64           `json:"completed"`
-	InProgress           int64           `json:"in_progress"`
-	NotStarted           int64           `json:"pending"`
-	ProgressPercentage   float64         `json:"progress_percentage"`
-	VendorProgressDetail json.RawMessage `json:"vendor_progress_detail,omitempty"`
+	SiteName              string          `json:"site_name"`
+	VendorID              string          `json:"vendor_id"`
+	VendorName            string          `json:"vendor_name"`
+	TargetPekerjaan       int64           `json:"target_pekerjaan"`
+	TotalPenugasan        int64           `json:"total_penugasan"`
+	TotalArea             int64           `json:"total_area"`
+	TotalPoint            int64           `json:"total_point"`
+	Completed             int64           `json:"completed"`
+	InProgress            int64           `json:"in_progress"`
+	NotStarted            int64           `json:"pending"`
+	ProgressPercentage    float64         `json:"progress_percentage"`
+	VendorProgressDetail  json.RawMessage `json:"vendor_progress_detail,omitempty"`
 }
 
 type DashboardVendorProgressResponse struct {
-	VendorProgress []DashboardVendorProgress `json:"vendor_progress"`
+	VendorProgress      []DashboardVendorProgress    `json:"vendor_progress"`
+	VendorUnassignments []DashboardVendorUnassignment `json:"vendor_unassignments"`
+}
+
+// DashboardVendorUnassignment berisi target point yang belum memiliki
+// penugasan aktif pada site dan vendor terkait.
+type DashboardVendorUnassignment struct {
+	SiteID                string                            `json:"site_id"`
+	SiteName              string                            `json:"site_name"`
+	VendorID              string                            `json:"vendor_id"`
+	VendorName            string                            `json:"vendor_name"`
+	TotalUnassignedPoint  int64                             `json:"total_unassigned_point"`
+	AreaDetail            []DashboardVendorUnassignmentArea `json:"area_detail"`
+}
+
+// DashboardVendorUnassignmentArea mengelompokkan point yang belum
+// ditugaskan berdasarkan area.
+type DashboardVendorUnassignmentArea struct {
+	AreaID             string                             `json:"area_id"`
+	NamaArea           string                             `json:"nama_area"`
+	TotalPointPerArea  int64                              `json:"total_point_per_area"`
+	PointDetail        []DashboardVendorUnassignedPoint   `json:"point_detail"`
+}
+
+// DashboardVendorUnassignedPoint adalah satu target point yang belum
+// memiliki pipeline_item_assignment aktif.
+type DashboardVendorUnassignedPoint struct {
+	PipelineItemID string `json:"pipeline_item_id"`
+	ItemID         string `json:"item_id"`
+	NamaPoint      string `json:"nama_point"`
 }
 
 type DashboardInventoryReport struct {

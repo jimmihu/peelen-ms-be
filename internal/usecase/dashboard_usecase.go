@@ -70,6 +70,7 @@ func (u *DashboardUsecaseImpl) GetDashboardDetail(
 ) (*entity.DashboardDetailResponse, error) {
 	switch detailType {
 	case "vendor_progress", "inventory_reports", "safety_reports":
+		// Jenis detail yang didukung.
 	default:
 		return nil, ErrInvalidOperationalData
 	}
@@ -94,10 +95,12 @@ func buildDashboardFilter(
 	vendorID string,
 	date string,
 ) entity.DashboardFilter {
+	isWorker := hasRole(actor, "WORKER") &&
+		!hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER")
+
 	return entity.DashboardFilter{
-		UserID: actor.ID,
-		IsWorker: hasRole(actor, "WORKER") &&
-			!hasRole(actor, "SUPER_ADMIN", "ADMIN", "ADMIN_WORKER"),
+		UserID:   actor.ID,
+		IsWorker: isWorker,
 		SiteID:   siteID,
 		VendorID: vendorID,
 		Date:     date,

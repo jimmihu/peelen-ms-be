@@ -1,4 +1,3 @@
-
 package postgres
 
 import (
@@ -32,10 +31,11 @@ func (r *DashboardRepositoryImpl) GetDashboardSummary(
 	}
 
 	result := &entity.DashboardSummaryResponse{
-		Filter:          filter,
-		VendorProgress:  make([]entity.DashboardVendorProgressSummary, 0),
-		InventoryReport: make([]entity.DashboardInventoryReport, 0),
-		SafetyReports:   make([]entity.DashboardSafetyReport, 0),
+		Filter:              filter,
+		VendorProgress:      make([]entity.DashboardVendorProgressSummary, 0),
+		VendorUnassignments: make([]entity.DashboardVendorUnassignment, 0),
+		InventoryReport:     make([]entity.DashboardInventoryReport, 0),
+		SafetyReports:       make([]entity.DashboardSafetyReport, 0),
 	}
 
 	args := dashboardArgs(access, filter)
@@ -50,18 +50,30 @@ func (r *DashboardRepositoryImpl) GetDashboardSummary(
 	}
 
 	for _, vendor := range vendors {
-		result.VendorProgress = append(result.VendorProgress, entity.DashboardVendorProgressSummary{
-			SiteID:             vendor.SiteID,
-			SiteName:           vendor.SiteName,
-			VendorID:           vendor.VendorID,
-			VendorName:         vendor.VendorName,
-			TotalTask:          vendor.TotalTask,
-			Completed:          vendor.Completed,
-			InProgress:         vendor.InProgress,
-			NotStarted:         vendor.NotStarted,
-			ProgressPercentage: vendor.ProgressPercentage,
-		})
+		result.VendorProgress = append(
+			result.VendorProgress,
+			entity.DashboardVendorProgressSummary{
+				SiteID:             vendor.SiteID,
+				SiteName:           vendor.SiteName,
+				VendorID:           vendor.VendorID,
+				VendorName:         vendor.VendorName,
+				TargetPekerjaan:    vendor.TargetPekerjaan,
+				TotalPenugasan:     vendor.TotalPenugasan,
+				TotalArea:          vendor.TotalArea,
+				TotalPoint:         vendor.TotalPoint,
+				Completed:          vendor.Completed,
+				InProgress:         vendor.InProgress,
+				NotStarted:         vendor.NotStarted,
+				ProgressPercentage: vendor.ProgressPercentage,
+			},
+		)
 	}
+
+	unassignments, err := r.getVendorUnassignments(ctx, args)
+	if err != nil {
+		return nil, dashboardQueryError("vendor unassignments", err)
+	}
+	result.VendorUnassignments = unassignments
 
 	inventory, err := r.getInventoryReports(ctx, args)
 	if err != nil {
@@ -89,6 +101,7 @@ func (r *DashboardRepositoryImpl) GetDashboardDetail(
 	}
 
 	args := dashboardArgs(access, filter)
+
 	result := &entity.DashboardDetailResponse{
 		Type: detailType,
 	}
@@ -99,8 +112,15 @@ func (r *DashboardRepositoryImpl) GetDashboardDetail(
 		if err != nil {
 			return nil, dashboardQueryError("vendor progress", err)
 		}
+
+		unassignments, err := r.getVendorUnassignments(ctx, args)
+		if err != nil {
+			return nil, dashboardQueryError("vendor unassignments", err)
+		}
+
 		result.Data = entity.DashboardVendorProgressResponse{
-			VendorProgress: vendors,
+			VendorProgress:      vendors,
+			VendorUnassignments: unassignments,
 		}
 
 	case "inventory_reports":
@@ -164,11 +184,10 @@ func hasDashboardRole(access entity.OperationalAccess, role string) bool {
 	return false
 }
 
-// Scope pipeline:
 // SUPER_ADMIN: semua data.
 // ADMIN: site dalam scope dan relasi vendor-site valid.
-// ADMIN_WORKER: vendor dalam scope dan semua site yang terhubung.
-// WORKER: vendor dalam scope; identitas pekerja dibatasi oleh dashboardWorkerFilter.
+// ADMIN_WORKER: vendor dalam scope dan seluruh site yang terhubung.
+// WORKER: vendor dalam scope; assignment/laporan dibatasi ke user login.
 func dashboardPipelineScope() string {
 	return `(
 		$1::boolean
@@ -200,7 +219,6 @@ func dashboardPipelineScope() string {
 	)`
 }
 
-// Mempersempit site dari request tanpa menghapus batas scope role.
 func dashboardPipelineSiteFilter() string {
 	return `(
 		NULLIF($4, '') IS NULL
@@ -208,8 +226,6 @@ func dashboardPipelineSiteFilter() string {
 	)`
 }
 
-// Inventory reports memiliki vendor_id, bukan site_id langsung.
-// Batas site menggunakan relasi vendor_sites.
 func dashboardInventoryScope() string {
 	return `(
 		$1::boolean
@@ -240,7 +256,6 @@ func dashboardInventoryScope() string {
 	)`
 }
 
-// Digunakan untuk filter site pada inventory reports.
 func dashboardSiteFilter(alias string) string {
 	return fmt.Sprintf(`(
 		NULLIF($4, '') IS NULL
@@ -257,8 +272,6 @@ func dashboardSiteFilter(alias string) string {
 	)`, alias)
 }
 
-// Filter request tidak dapat memperluas scope role karena
-// tetap dikombinasikan dengan dashboardPipelineScope/dashboardInventoryScope.
 func dashboardVendorFilter(alias string) string {
 	return fmt.Sprintf(`(
 		NULLIF($5, '') IS NULL
@@ -267,8 +280,6 @@ func dashboardVendorFilter(alias string) string {
 }
 
 // WORKER selalu dibatasi ke user login.
-// $11 memastikan pembatasan tetap aktif berdasarkan role,
-// sekalipun filter.IsWorker tidak sengaja bernilai false.
 func dashboardWorkerFilter(alias string) string {
 	return fmt.Sprintf(`(
 		NOT ($7::boolean OR $11::boolean)
@@ -290,39 +301,89 @@ func dashboardDateRange(alias, column string) string {
 	)`, alias, column, alias, column)
 }
 
+// getTaskSummary menghitung target dari pipeline_items, bukan dari assignment.
+// Status laporan dihitung dari assignment aktif dan tanggal dashboard.
 func (r *DashboardRepositoryImpl) getTaskSummary(
 	ctx context.Context,
 	args []any,
 	result *entity.DashboardTaskSummary,
 ) error {
 	query := `
+		WITH filtered_target AS (
+			SELECT
+				pi.id AS pipeline_item_id,
+				p.id AS area_id
+			FROM pipeline_items pi
+			JOIN pipelines p ON p.id = pi.pipeline_id
+			JOIN items i ON i.id = pi.item_id
+			WHERE pi.status = 'ACTIVE'
+			  AND p.status = 'ACTIVE'
+			  AND i.status = 'ACTIVE'
+			  AND ` + dashboardPipelineScope() + `
+			  AND ` + dashboardPipelineSiteFilter() + `
+			  AND ` + dashboardVendorFilter("p") + `
+		),
+		filtered_assignment AS (
+			SELECT
+				pia.id AS assignment_id
+			FROM pipeline_item_assignments pia
+			JOIN filtered_target ft
+				ON ft.pipeline_item_id = pia.pipeline_item_id
+			WHERE pia.is_active = TRUE
+			  AND ` + dashboardWorkerFilter("pia") + `
+		),
+		target_summary AS (
+			SELECT
+				COUNT(*) AS target_pekerjaan,
+				COUNT(DISTINCT area_id) AS total_area,
+				COUNT(*) AS total_point
+			FROM filtered_target
+		),
+		assignment_summary AS (
+			SELECT
+				COUNT(DISTINCT fa.assignment_id) FILTER (
+					WHERE EXISTS (
+						SELECT 1
+						FROM pipeline_reports pr
+						WHERE pr.pipeline_item_assignment_id = fa.assignment_id
+						  AND pr.report_date = NULLIF($6, '')::date
+						  AND pr.status = 'IN_PROGRESS'
+					)
+				) AS in_progress,
+				COUNT(DISTINCT fa.assignment_id) FILTER (
+					WHERE EXISTS (
+						SELECT 1
+						FROM pipeline_reports pr
+						WHERE pr.pipeline_item_assignment_id = fa.assignment_id
+						  AND pr.report_date = NULLIF($6, '')::date
+						  AND pr.status = 'COMPLETED'
+					)
+				) AS completed,
+				COUNT(DISTINCT fa.assignment_id) FILTER (
+					WHERE NOT EXISTS (
+						SELECT 1
+						FROM pipeline_reports pr
+						WHERE pr.pipeline_item_assignment_id = fa.assignment_id
+						  AND pr.report_date = NULLIF($6, '')::date
+					)
+				) AS not_started
+			FROM filtered_assignment fa
+		)
 		SELECT
-			COUNT(DISTINCT pia.id) AS total_task,
-			COUNT(DISTINCT pia.id) FILTER (
-				WHERE pr.status = 'IN_PROGRESS'
-			) AS in_progress,
-			COUNT(DISTINCT pia.id) FILTER (
-				WHERE pr.status = 'COMPLETED'
-			) AS completed,
-			COUNT(DISTINCT pia.id) FILTER (
-				WHERE pr.id IS NULL
-			) AS not_started
-		FROM pipeline_item_assignments pia
-		JOIN pipeline_items pi
-			ON pi.id = pia.pipeline_item_id
-		JOIN pipelines p
-			ON p.id = pi.pipeline_id
-		LEFT JOIN pipeline_reports pr
-			ON pr.pipeline_item_assignment_id = pia.id
-		   AND pr.report_date = $6::date
-		WHERE pia.is_active = TRUE
-		  AND ` + dashboardPipelineScope() + `
-		  AND ` + dashboardPipelineSiteFilter() + `
-		  AND ` + dashboardVendorFilter("p") + `
-		  AND ` + dashboardWorkerFilter("pia")
+			ts.target_pekerjaan,
+			ts.total_area,
+			ts.total_point,
+			asum.in_progress,
+			asum.completed,
+			asum.not_started
+		FROM target_summary ts
+		CROSS JOIN assignment_summary asum
+	`
 
 	return r.db.QueryRowContext(ctx, query, args...).Scan(
-		&result.TotalTask,
+		&result.TargetPekerjaan,
+		&result.TotalArea,
+		&result.TotalPoint,
 		&result.InProgress,
 		&result.Completed,
 		&result.NotStarted,
@@ -334,54 +395,82 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 	args []any,
 ) ([]entity.DashboardVendorProgress, error) {
 	query := `
-		WITH filtered_assignment AS (
+		WITH filtered_target AS (
 			SELECT
-				pia.id AS assignment_id,
-				pia.pipeline_item_id,
-				pia.user_id,
-				u.full_name AS worker_name,
+				pi.id AS pipeline_item_id,
+				pi.item_id,
+				pi.sort_order,
 				p.id AS area_id,
 				p.name AS area_name,
 				p.site_id,
 				s.name AS site_name,
 				p.vendor_id,
 				v.name AS vendor_name,
-				pi.item_id,
-				i.name AS point_name,
-				pi.sort_order
-			FROM pipeline_item_assignments pia
-			JOIN pipeline_items pi ON pi.id = pia.pipeline_item_id
+				i.name AS point_name
+			FROM pipeline_items pi
 			JOIN pipelines p ON p.id = pi.pipeline_id
 			JOIN sites s ON s.id = p.site_id
 			JOIN items i ON i.id = pi.item_id
 			JOIN vendors v ON v.id = p.vendor_id
-			LEFT JOIN users u ON u.id = pia.user_id
-			WHERE pia.is_active = TRUE
-			  AND pi.status = 'ACTIVE'
+			WHERE pi.status = 'ACTIVE'
 			  AND p.status = 'ACTIVE'
 			  AND i.status = 'ACTIVE'
 			  AND ` + dashboardPipelineScope() + `
 			  AND ` + dashboardPipelineSiteFilter() + `
 			  AND ` + dashboardVendorFilter("p") + `
+		),
+		filtered_assignment AS (
+			SELECT
+				pia.id AS assignment_id,
+				pia.pipeline_item_id,
+				pia.user_id,
+				u.full_name AS worker_name,
+				ft.area_id,
+				ft.area_name,
+				ft.site_id,
+				ft.site_name,
+				ft.vendor_id,
+				ft.vendor_name,
+				ft.item_id,
+				ft.point_name,
+				ft.sort_order
+			FROM pipeline_item_assignments pia
+			JOIN filtered_target ft
+				ON ft.pipeline_item_id = pia.pipeline_item_id
+			LEFT JOIN users u ON u.id = pia.user_id
+			WHERE pia.is_active = TRUE
 			  AND ` + dashboardWorkerFilter("pia") + `
 		),
 		point_base AS (
 			SELECT DISTINCT
-				site_id, site_name, vendor_id, vendor_name,
-				area_id, area_name, pipeline_item_id, item_id,
-				point_name, sort_order
-			FROM filtered_assignment
+				fa.site_id,
+				fa.site_name,
+				fa.vendor_id,
+				fa.vendor_name,
+				fa.area_id,
+				fa.area_name,
+				fa.pipeline_item_id,
+				fa.item_id,
+				fa.point_name,
+				fa.sort_order
+			FROM filtered_assignment fa
 		),
 		assignment_summary AS (
 			SELECT
-				site_id, vendor_id, area_id, pipeline_item_id,
+				site_id,
+				vendor_id,
+				area_id,
+				pipeline_item_id,
 				COUNT(DISTINCT user_id) AS total_worker
 			FROM filtered_assignment
 			GROUP BY site_id, vendor_id, area_id, pipeline_item_id
 		),
 		pending_detail AS (
 			SELECT
-				fa.site_id, fa.vendor_id, fa.area_id, fa.pipeline_item_id,
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id,
 				JSONB_AGG(
 					JSONB_BUILD_OBJECT(
 						'assignment_id', fa.assignment_id,
@@ -402,7 +491,10 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		),
 		report_count AS (
 			SELECT
-				fa.site_id, fa.vendor_id, fa.area_id, fa.pipeline_item_id,
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id,
 				COUNT(DISTINCT pr.id) AS total_report
 			FROM filtered_assignment fa
 			JOIN pipeline_reports pr
@@ -412,10 +504,18 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		),
 		report_rows AS (
 			SELECT
-				fa.site_id, fa.vendor_id, fa.area_id, fa.pipeline_item_id,
-				fa.assignment_id, fa.user_id, fa.worker_name,
-				pr.id AS report_id, pr.shift, pr.status AS task_status,
-				prd.open_date, prd.closed_date AS close_date,
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id,
+				fa.assignment_id,
+				fa.user_id,
+				fa.worker_name,
+				pr.id AS report_id,
+				pr.shift,
+				pr.status AS task_status,
+				prd.open_date,
+				prd.closed_date AS close_date,
 				COALESCE(NULLIF(prd.note_category, ''), '-') AS category_note,
 				prd.notes
 			FROM filtered_assignment fa
@@ -427,8 +527,11 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		),
 		shift_detail AS (
 			SELECT
-				rr.site_id, rr.vendor_id, rr.area_id,
-				rr.pipeline_item_id, rr.shift,
+				rr.site_id,
+				rr.vendor_id,
+				rr.area_id,
+				rr.pipeline_item_id,
+				rr.shift,
 				JSONB_AGG(
 					JSONB_BUILD_OBJECT(
 						'assignment_id', rr.assignment_id,
@@ -444,14 +547,23 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 				) AS task_detail
 			FROM report_rows rr
 			GROUP BY
-				rr.site_id, rr.vendor_id, rr.area_id,
-				rr.pipeline_item_id, rr.shift
+				rr.site_id,
+				rr.vendor_id,
+				rr.area_id,
+				rr.pipeline_item_id,
+				rr.shift
 		),
 		point_json AS (
 			SELECT
-				pb.site_id, pb.site_name, pb.vendor_id, pb.vendor_name,
-				pb.area_id, pb.area_name, pb.pipeline_item_id,
-				pb.point_name, pb.sort_order,
+				pb.site_id,
+				pb.site_name,
+				pb.vendor_id,
+				pb.vendor_name,
+				pb.area_id,
+				pb.area_name,
+				pb.pipeline_item_id,
+				pb.point_name,
+				pb.sort_order,
 				COALESCE(ass.total_worker, 0) AS total_worker,
 				COALESCE(rc.total_report, 0) AS total_report,
 				JSONB_BUILD_OBJECT(
@@ -494,8 +606,12 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		),
 		area_json AS (
 			SELECT
-				pj.site_id, pj.site_name, pj.vendor_id, pj.vendor_name,
-				pj.area_id, pj.area_name,
+				pj.site_id,
+				pj.site_name,
+				pj.vendor_id,
+				pj.vendor_name,
+				pj.area_id,
+				pj.area_name,
 				COUNT(*) AS total_point_per_area,
 				(
 					SELECT COUNT(DISTINCT fa.user_id)
@@ -511,12 +627,17 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 				) AS point_detail
 			FROM point_json pj
 			GROUP BY
-				pj.site_id, pj.site_name, pj.vendor_id, pj.vendor_name,
-				pj.area_id, pj.area_name
+				pj.site_id,
+				pj.site_name,
+				pj.vendor_id,
+				pj.vendor_name,
+				pj.area_id,
+				pj.area_name
 		),
 		vendor_detail AS (
 			SELECT
-				aj.site_id, aj.vendor_id,
+				aj.site_id,
+				aj.vendor_id,
 				JSONB_BUILD_OBJECT(
 					'total_area', COUNT(*),
 					'total_point', COALESCE(SUM(aj.total_point_per_area), 0),
@@ -542,10 +663,12 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			FROM area_json aj
 			GROUP BY aj.site_id, aj.vendor_id
 		),
-		vendor_summary AS (
+		assignment_status AS (
 			SELECT
-				fa.site_id, fa.site_name, fa.vendor_id, fa.vendor_name,
-				COUNT(DISTINCT fa.assignment_id) AS total_task,
+				fa.site_id,
+				fa.site_name,
+				fa.vendor_id,
+				fa.vendor_name,
 				COUNT(DISTINCT fa.assignment_id) FILTER (
 					WHERE EXISTS (
 						SELECT 1
@@ -571,42 +694,78 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 						WHERE pr.pipeline_item_assignment_id = fa.assignment_id
 						  AND pr.report_date = NULLIF($6, '')::date
 					)
-				) AS not_started,
-				COALESCE(
-					ROUND(
-						100.0 * COUNT(DISTINCT fa.assignment_id) FILTER (
-							WHERE EXISTS (
-								SELECT 1
-								FROM pipeline_reports pr
-								WHERE pr.pipeline_item_assignment_id = fa.assignment_id
-								  AND pr.report_date = NULLIF($6, '')::date
-								  AND pr.status = 'COMPLETED'
-							)
-						) / NULLIF(COUNT(DISTINCT fa.assignment_id), 0),
-						0
-					),
-					0
-				) AS progress_percentage
+				) AS not_started
 			FROM filtered_assignment fa
 			GROUP BY
-				fa.site_id, fa.site_name, fa.vendor_id, fa.vendor_name
+				fa.site_id,
+				fa.site_name,
+				fa.vendor_id,
+				fa.vendor_name
+		),
+		assignment_total AS (
+			SELECT
+				ft.site_id,
+				ft.vendor_id,
+				COUNT(DISTINCT ft.pipeline_item_id) AS total_penugasan
+			FROM filtered_target ft
+			WHERE EXISTS (
+				SELECT 1
+				FROM pipeline_item_assignments pia
+				WHERE pia.pipeline_item_id = ft.pipeline_item_id
+				AND pia.is_active = TRUE
+			)
+			GROUP BY
+				ft.site_id,
+				ft.vendor_id
+		),
+		target_summary AS (
+			SELECT
+				ft.site_id,
+				ft.site_name,
+				ft.vendor_id,
+				ft.vendor_name,
+				COUNT(*) AS target_pekerjaan,
+				COUNT(DISTINCT ft.area_id) AS total_area,
+				COUNT(*) AS total_point
+			FROM filtered_target ft
+			GROUP BY
+				ft.site_id,
+				ft.site_name,
+				ft.vendor_id,
+				ft.vendor_name
 		)
 		SELECT
-			vs.site_id::text,
-			vs.site_name,
-			vs.vendor_id::text,
-			vs.vendor_name,
-			vs.total_task,
-			vs.completed,
-			vs.in_progress,
-			vs.not_started,
-			vs.progress_percentage,
+			ts.site_id::text,
+			ts.site_name,
+			ts.vendor_id::text,
+			ts.vendor_name,
+			ts.target_pekerjaan,
+			COALESCE(at.total_penugasan, 0) AS total_penugasan,
+			ts.total_area,
+			ts.total_point,
+			COALESCE(ast.completed, 0) AS completed,
+			COALESCE(ast.in_progress, 0) AS in_progress,
+			COALESCE(ast.not_started, 0) AS not_started,
+			COALESCE(
+				ROUND(
+					100.0 * COALESCE(ast.completed, 0)
+					/ NULLIF(ts.target_pekerjaan, 0),
+					2
+				),
+				0
+			) AS progress_percentage,
 			COALESCE(vd.detail, '{}'::jsonb) AS vendor_progress_detail
-		FROM vendor_summary vs
+		FROM target_summary ts
+		LEFT JOIN assignment_status ast
+			ON ast.site_id = ts.site_id
+		AND ast.vendor_id = ts.vendor_id
+		LEFT JOIN assignment_total at
+			ON at.site_id = ts.site_id
+		AND at.vendor_id = ts.vendor_id
 		LEFT JOIN vendor_detail vd
-			ON vd.site_id = vs.site_id
-		   AND vd.vendor_id = vs.vendor_id
-		ORDER BY vs.site_name, vs.vendor_name
+			ON vd.site_id = ts.site_id
+		AND vd.vendor_id = ts.vendor_id
+		ORDER BY ts.site_name, ts.vendor_name
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -626,7 +785,10 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			&item.SiteName,
 			&item.VendorID,
 			&item.VendorName,
-			&item.TotalTask,
+			&item.TargetPekerjaan,
+			&item.TotalPenugasan,
+			&item.TotalArea,
+			&item.TotalPoint,
 			&item.Completed,
 			&item.InProgress,
 			&item.NotStarted,
@@ -640,7 +802,186 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		result = append(result, item)
 	}
 
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (r *DashboardRepositoryImpl) getVendorUnassignments(
+	ctx context.Context,
+	args []any,
+) ([]entity.DashboardVendorUnassignment, error) {
+	if len(args) < 11 {
+		return nil, fmt.Errorf(
+			"dashboard vendor unassignments: expected 11 arguments, got %d",
+			len(args),
+		)
+	}
+
+	query := `
+		SELECT
+			p.site_id::text,
+			s.name AS site_name,
+			p.vendor_id::text,
+			v.name AS vendor_name,
+			p.id::text AS area_id,
+			p.name AS area_name,
+			pi.id::text AS pipeline_item_id,
+			pi.item_id::text AS item_id,
+			i.name AS point_name,
+			pi.sort_order
+		FROM pipeline_items pi
+		JOIN pipelines p
+			ON p.id = pi.pipeline_id
+		JOIN sites s
+			ON s.id = p.site_id
+		JOIN vendors v
+			ON v.id = p.vendor_id
+		JOIN items i
+			ON i.id = pi.item_id
+		WHERE pi.status = 'ACTIVE'
+		  AND p.status = 'ACTIVE'
+		  AND i.status = 'ACTIVE'
+		  AND ` + dashboardPipelineScope() + `
+		  AND ` + dashboardPipelineSiteFilter() + `
+		  AND ` + dashboardVendorFilter("p") + `
+		  AND (
+				$6::text IS NULL
+				OR $6::text IS NOT NULL
+		  )
+		  AND (
+				$7::boolean IS NULL
+				OR $7::boolean IS NOT NULL
+		  )
+		  AND (
+				$8::text IS NULL
+				OR $8::text IS NOT NULL
+		  )
+		  AND NOT EXISTS (
+				SELECT 1
+				FROM pipeline_item_assignments pia
+				WHERE pia.pipeline_item_id = pi.id
+				  AND pia.is_active = TRUE
+		  )
+		ORDER BY
+			s.name,
+			v.name,
+			p.name,
+			pi.sort_order,
+			i.name
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard vendor unassignments: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]entity.DashboardVendorUnassignment, 0)
+
+	vendorIndex := make(map[string]int)
+	areaIndex := make(map[string]int)
+
+	for rows.Next() {
+		var (
+			siteID         string
+			siteName       string
+			vendorID       string
+			vendorName     string
+			areaID         string
+			areaName       string
+			pipelineItemID string
+			itemID         string
+			pointName      string
+			sortOrder      sql.NullInt64
+		)
+
+		if err := rows.Scan(
+			&siteID,
+			&siteName,
+			&vendorID,
+			&vendorName,
+			&areaID,
+			&areaName,
+			&pipelineItemID,
+			&itemID,
+			&pointName,
+			&sortOrder,
+		); err != nil {
+			return nil, fmt.Errorf(
+				"scan dashboard vendor unassignments: %w",
+				err,
+			)
+		}
+
+		vendorKey := siteID + "|" + vendorID
+
+		vIndex, exists := vendorIndex[vendorKey]
+		if !exists {
+			vIndex = len(result)
+			vendorIndex[vendorKey] = vIndex
+
+			result = append(
+				result,
+				entity.DashboardVendorUnassignment{
+					SiteID:               siteID,
+					SiteName:             siteName,
+					VendorID:             vendorID,
+					VendorName:           vendorName,
+					TotalUnassignedPoint: 0,
+					AreaDetail: make(
+						[]entity.DashboardVendorUnassignmentArea,
+						0,
+					),
+				},
+			)
+		}
+
+		result[vIndex].TotalUnassignedPoint++
+
+		areaKey := vendorKey + "|" + areaID
+
+		aIndex, exists := areaIndex[areaKey]
+		if !exists {
+			aIndex = len(result[vIndex].AreaDetail)
+			areaIndex[areaKey] = aIndex
+
+			result[vIndex].AreaDetail = append(
+				result[vIndex].AreaDetail,
+				entity.DashboardVendorUnassignmentArea{
+					AreaID:            areaID,
+					NamaArea:          areaName,
+					TotalPointPerArea: 0,
+					PointDetail: make(
+						[]entity.DashboardVendorUnassignedPoint,
+						0,
+					),
+				},
+			)
+		}
+
+		result[vIndex].AreaDetail[aIndex].TotalPointPerArea++
+
+		result[vIndex].AreaDetail[aIndex].PointDetail = append(
+			result[vIndex].AreaDetail[aIndex].PointDetail,
+			entity.DashboardVendorUnassignedPoint{
+				PipelineItemID: pipelineItemID,
+				ItemID:         itemID,
+				NamaPoint:      pointName,
+			},
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate dashboard vendor unassignments: %w",
+			err,
+		)
+	}
+
+	return result, nil
 }
 
 func (r *DashboardRepositoryImpl) getInventoryReports(
@@ -713,7 +1054,11 @@ func (r *DashboardRepositoryImpl) getInventoryReports(
 		result = append(result, item)
 	}
 
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (r *DashboardRepositoryImpl) getSafetyReports(
@@ -800,7 +1145,11 @@ func (r *DashboardRepositoryImpl) getSafetyReports(
 		result = append(result, item)
 	}
 
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 var _ repository.DashboardRepository = (*DashboardRepositoryImpl)(nil)
