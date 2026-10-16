@@ -24,25 +24,28 @@ const (
 )
 
 type OperationalRecord struct {
-	ID          string    `json:"id"`
-	VendorID    *string   `json:"vendor_id,omitempty"`
-	SiteID      *string   `json:"site_id,omitempty"`
-	Name        string    `json:"name,omitempty"`
-	Description *string   `json:"description,omitempty"`
-	Item        string    `json:"item,omitempty"`
-	ItemType    *string   `json:"jenis_item,omitempty"`
-	Quantity    *int      `json:"qty,omitempty"`
-	Image       *string   `json:"-"`
-	ImageURL    *string   `json:"image_url,omitempty"`
-	Condition   string    `json:"status_condition,omitempty"`
-	FileURL     *string   `json:"-"`
-	PipelineID  *string   `json:"pipeline_id,omitempty"`
-	ItemID      *string   `json:"item_id,omitempty"`
-	SortOrder   *int      `json:"sort_order,omitempty"`
-	Status      string    `json:"status"`
-	CreatedBy   *string   `json:"created_by,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string  `json:"id"`
+	VendorID    *string `json:"vendor_id,omitempty"`
+	SiteID      *string `json:"site_id,omitempty"`
+	Name        string  `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Item        string  `json:"item,omitempty"`
+	ItemType    *string `json:"jenis_item,omitempty"`
+	Quantity    *int    `json:"qty,omitempty"`
+	Image       *string `json:"-"`
+	ImageURL    *string `json:"image_url,omitempty"`
+	Condition   string  `json:"status_condition,omitempty"`
+	FileURL     *string `json:"-"`
+	PipelineID  *string `json:"pipeline_id,omitempty"`
+	ItemID      *string `json:"item_id,omitempty"`
+	SortOrder   *int    `json:"sort_order,omitempty"`
+	// ItemCount / InactiveItemCount: a pipeline's active and inactive tasks.
+	ItemCount         *int      `json:"item_count,omitempty"`
+	InactiveItemCount *int      `json:"inactive_item_count,omitempty"`
+	Status            string    `json:"status"`
+	CreatedBy         *string   `json:"created_by,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type OperationalInput struct {

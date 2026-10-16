@@ -117,7 +117,50 @@ func (r *OperationalRepositoryImpl) ListOperational(ctx context.Context, access 
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
+	if resource == entity.ResourcePipeline {
+		if err := r.loadPipelineItemCounts(ctx, records); err != nil {
+			return nil, 0, err
+		}
+	}
 	return records, total, nil
+}
+
+// loadPipelineItemCounts fills each pipeline's number of active and inactive
+// tasks (pipeline items whose master task is active count as active).
+func (r *OperationalRepositoryImpl) loadPipelineItemCounts(ctx context.Context, pipelines []entity.OperationalRecord) error {
+	if len(pipelines) == 0 {
+		return nil
+	}
+	ids := make([]string, len(pipelines))
+	index := make(map[string]int, len(pipelines))
+	for i := range pipelines {
+		zero, zeroInactive := 0, 0
+		pipelines[i].ItemCount, pipelines[i].InactiveItemCount = &zero, &zeroInactive
+		ids[i] = pipelines[i].ID
+		index[pipelines[i].ID] = i
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT pi.pipeline_id::text,
+			count(*) FILTER (WHERE pi.status = 'ACTIVE' AND i.status = 'ACTIVE'),
+			count(*) FILTER (WHERE NOT (pi.status = 'ACTIVE' AND i.status = 'ACTIVE'))
+		FROM pipeline_items pi JOIN items i ON i.id = pi.item_id
+		WHERE pi.pipeline_id = ANY($1::uuid[])
+		GROUP BY pi.pipeline_id`, pq.Array(ids))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var active, inactive int
+		if err := rows.Scan(&id, &active, &inactive); err != nil {
+			return err
+		}
+		if i, ok := index[id]; ok {
+			*pipelines[i].ItemCount, *pipelines[i].InactiveItemCount = active, inactive
+		}
+	}
+	return rows.Err()
 }
 
 func (r *OperationalRepositoryImpl) GetOperational(ctx context.Context, access entity.OperationalAccess, resource entity.OperationalResource, id string) (*entity.OperationalRecord, error) {
@@ -134,6 +177,13 @@ func (r *OperationalRepositoryImpl) GetOperational(ctx context.Context, access e
 	}
 	if err != nil {
 		return nil, err
+	}
+	if resource == entity.ResourcePipeline {
+		records := []entity.OperationalRecord{record}
+		if err := r.loadPipelineItemCounts(ctx, records); err != nil {
+			return nil, err
+		}
+		record = records[0]
 	}
 	return &record, nil
 }
