@@ -94,6 +94,8 @@ func NewRouter(cfg Config) *gin.Engine {
 	pipelineReports.POST("", cfg.WorkflowHandler.CreatePipelineReport)
 	pipelineReports.GET("/:id", cfg.WorkflowHandler.GetPipelineReport)
 	pipelineReports.PATCH("/:id", cfg.WorkflowHandler.UpdatePipelineReport)
+	pipelineReports.GET("/:id/revisions", cfg.WorkflowHandler.ListPipelineReportRevisions)
+	pipelineReports.POST("/:id/revisions", cfg.WorkflowHandler.RevisePipelineReport)
 
 	inventoryReports := operations.Group("/inventory-report")
 	inventoryReports.GET("", cfg.WorkflowHandler.ListInventoryReports)

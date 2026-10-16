@@ -624,6 +624,124 @@ func (r *WorkflowRepositoryImpl) UpdatePipelineReport(ctx context.Context, acces
 	return r.GetPipelineReport(ctx, access, id)
 }
 
+// RevisePipelineReport archives the current details of the Worker's completed
+// report as version revision_count, then writes the revision's new photos and
+// times (notes and category are kept unless given). The report stays
+// COMPLETED; a revision after the shift ends marks it SUBMITTED (late upload),
+// like any change after the shift.
+func (r *WorkflowRepositoryImpl) RevisePipelineReport(ctx context.Context, access entity.OperationalAccess, id string, input entity.PipelineReportInput) (*entity.PipelineReport, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var status, previousRevision string
+	var revisionCount int
+	var afterShift, locked bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT pr.status, pr.status_revisi, pr.revision_count,
+			now() > `+reportShiftEndSQL("pr.report_date", "st.timezone")+`,
+			now() >= `+reportUploadCloseSQL("pr.report_date", "st.timezone")+`
+		FROM pipeline_reports pr
+		JOIN pipeline_item_assignments a ON a.id = pr.pipeline_item_assignment_id
+		JOIN pipeline_items pi ON pi.id = a.pipeline_item_id
+		JOIN pipelines p ON p.id = pi.pipeline_id
+		JOIN sites st ON st.id = p.site_id
+		JOIN shifts sh ON sh.shift = pr.shift
+		WHERE pr.id = $1 AND a.user_id = $2 AND a.is_active
+		FOR UPDATE OF pr
+	`, id, access.UserID).Scan(&status, &previousRevision, &revisionCount, &afterShift, &locked); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, err
+	}
+	if locked {
+		return nil, entity.ErrReportUploadClosed
+	}
+	if status != "COMPLETED" {
+		return nil, fmt.Errorf("%w: only a completed report can be revised", entity.ErrInvalidOperationalData)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO pipeline_report_revisions
+			(pipeline_report_id, revision_no, evidence_before, evidence_after, open_date, closed_date,
+			 note_category, notes, revised_by, reason)
+		SELECT d.pipeline_report_id, $2, d.evidence_before, d.evidence_after, d.open_date, d.closed_date,
+			d.note_category, d.notes, $3, $4
+		FROM pipeline_report_details d WHERE d.pipeline_report_id = $1
+	`, id, revisionCount, access.UserID, input.Reason); err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	// The revision's times come only from its new photos (or the client).
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE pipeline_report_details SET open_date = NULL, closed_date = NULL WHERE pipeline_report_id = $1
+	`, id); err != nil {
+		return nil, err
+	}
+	if err := writePipelineReportDetails(ctx, tx, id, input); err != nil {
+		return nil, err
+	}
+	if err := checkReportWorkTimes(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	revision := previousRevision
+	if afterShift {
+		revision = "SUBMITTED"
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE pipeline_reports SET revision_count = revision_count + 1, status_revisi = $2, updated_at = now()
+		WHERE id = $1
+	`, id, revision); err != nil {
+		return nil, translateOperationalDBError(err)
+	}
+	reason := fmt.Sprintf("Revisi ke-%d", revisionCount+1)
+	if input.Reason != nil && strings.TrimSpace(*input.Reason) != "" {
+		reason += ": " + strings.TrimSpace(*input.Reason)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO pipeline_report_history
+			(pipeline_report_id, actor_id, previous_status, new_status, previous_revision, new_revision, reason)
+		VALUES ($1, $2, $3, $3, $4, $5, $6)
+	`, id, access.UserID, status, previousRevision, revision, reason); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetPipelineReport(ctx, access, id)
+}
+
+// ListPipelineReportRevisions returns the archived versions of a report, oldest first.
+func (r *WorkflowRepositoryImpl) ListPipelineReportRevisions(ctx context.Context, reportID string) ([]entity.PipelineReportRevision, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT rv.id::text, rv.revision_no, rv.evidence_before, rv.evidence_after, rv.open_date, rv.closed_date,
+			rv.note_category, rv.notes, rv.revised_by::text, coalesce(u.full_name, u.username), rv.reason, rv.created_at
+		FROM pipeline_report_revisions rv
+		LEFT JOIN users u ON u.id = rv.revised_by
+		WHERE rv.pipeline_report_id = $1
+		ORDER BY rv.revision_no`, reportID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	revisions := make([]entity.PipelineReportRevision, 0)
+	for rows.Next() {
+		var rv entity.PipelineReportRevision
+		var before, after, category, notes, revisedBy, revisedByName, reason sql.NullString
+		var openDate, closedDate sql.NullTime
+		if err := rows.Scan(&rv.ID, &rv.RevisionNo, &before, &after, &openDate, &closedDate,
+			&category, &notes, &revisedBy, &revisedByName, &reason, &rv.CreatedAt); err != nil {
+			return nil, err
+		}
+		rv.EvidenceBefore, rv.EvidenceAfter = nullStringPtr(before), nullStringPtr(after)
+		rv.OpenDate, rv.ClosedDate = nullTimePtr(openDate), nullTimePtr(closedDate)
+		rv.NoteCategory, rv.Notes = nullStringPtr(category), nullStringPtr(notes)
+		rv.RevisedBy, rv.RevisedByName, rv.Reason = nullStringPtr(revisedBy), nullStringPtr(revisedByName), nullStringPtr(reason)
+		revisions = append(revisions, rv)
+	}
+	return revisions, rows.Err()
+}
+
 func writePipelineReportDetails(ctx context.Context, tx *sql.Tx, reportID string, input entity.PipelineReportInput) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO pipeline_report_details
@@ -883,7 +1001,7 @@ func queryPipelineReports(ctx context.Context, db *sql.DB, whereSQL string, args
 	rows, err := db.QueryContext(ctx, `
 		SELECT pr.id::text, a.id::text, pi.id::text, p.id::text, i.id::text, i.name, p.vendor_id::text,
 			u.id::text, u.username, rs.id::text, rs.name, rs.timezone, pr.shift, to_char(pr.report_date, 'YYYY-MM-DD'),
-			pr.status, pr.status_revisi, d.evidence_before, d.evidence_after,
+			pr.status, pr.status_revisi, pr.revision_count, d.evidence_before, d.evidence_after,
 			d.open_date, d.closed_date, d.note_category, d.notes, pr.created_at, pr.updated_at
 		FROM `+from+" WHERE "+whereSQL+
 		fmt.Sprintf(" ORDER BY pr.report_date DESC, pr.created_at DESC LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
@@ -909,7 +1027,7 @@ func scanPipelineReport(row interface{ Scan(...any) error }) (entity.PipelineRep
 	err := row.Scan(&report.ID, &report.PipelineItemAssignmentID, &report.PipelineItemID, &report.PipelineID, &report.ItemID,
 		&report.ItemName, &report.VendorID, &report.UserID, &report.Username,
 		&report.SiteID, &report.SiteName, &report.SiteTimezone, &report.Shift,
-		&report.ReportDate, &report.Status, &report.StatusRevisi, &evidenceBefore, &evidenceAfter,
+		&report.ReportDate, &report.Status, &report.StatusRevisi, &report.RevisionCount, &evidenceBefore, &evidenceAfter,
 		&openDate, &closedDate, &noteCategory, &notes, &report.CreatedAt, &report.UpdatedAt)
 	if err != nil {
 		return entity.PipelineReport{}, err

@@ -237,6 +237,15 @@ than today requires `shift`. `GET /me/tasks` without `date` likewise lists today
 at each task's site. Tasks and pipeline reports include `site_id`, `site_name` and
 `site_timezone` so clients can show times on the site's clock.
 
+A Worker may revise a `COMPLETED` report any number of times while its upload
+window is open: `POST /pipeline-reports/{id}/revisions` (multipart) with new
+`evidence_before` and `evidence_after` photos (both required), optional
+`note_category`, `notes` and `reason`. The previous version is kept in
+`pipeline_report_revisions` (`revision_no` 0 = the original) and the report's
+`revision_count` goes up; the report stays `COMPLETED`. `GET
+/pipeline-reports/{id}/revisions` lists the earlier versions, oldest first, with
+signed photo URLs, for anyone who can read the report.
+
 `status_revisi` is set by the server: `NONE` while the report is sent within its
 shift, `SUBMITTED` once it is created or changed after the shift ends (late upload,
 e.g. no signal on site). Uploads stay open until the same shift starts the next day;

@@ -2086,6 +2086,73 @@
             },
             "description": "Upload foto susulan, misalnya setelah dapat sinyal. multipart/form-data. Foto disimpan ke MinIO; untuk JPEG, jam EXIF kamera menjadi open_date (evidence_before) dan closed_date (evidence_after), mengalahkan nilai dari client. Tanpa EXIF dipakai open_date/closed_date (RFC 3339). Jam harus antara 1 jam sebelum shift mulai dan saat upload. Maks 5 MB per foto."
           }
+        },
+        {
+          "name": "Revise Pipeline Report (New Photos)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipeline-reports/{{pipeline_report_id}}/revisions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipeline-reports",
+                "{{pipeline_report_id}}",
+                "revisions"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "evidence_before",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "evidence_after",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "notes",
+                  "value": "Foto ulang, sudut sama",
+                  "type": "text"
+                },
+                {
+                  "key": "reason",
+                  "value": "Foto sebelumnya buram",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Worker mengajukan revisi laporan COMPLETED: wajib foto evidence_before dan evidence_after baru. Bisa berkali-kali selama jendela upload belum tutup. Versi lama disimpan (lihat List Pipeline Report Revisions)."
+          }
+        },
+        {
+          "name": "List Pipeline Report Revisions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipeline-reports/{{pipeline_report_id}}/revisions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipeline-reports",
+                "{{pipeline_report_id}}",
+                "revisions"
+              ]
+            },
+            "description": "Versi lama laporan (revision_no 0 = laporan asli), urut dari yang terlama, dengan URL foto bertanda tangan."
+          }
         }
       ]
     },
@@ -2838,8 +2905,15 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/dashboard/summary?date={{date}}&site_id={{site_id}}&vendor_id={{vendor_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "dashboard", "summary"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "summary"
+              ],
               "query": [
                 {
                   "key": "date",
@@ -2869,8 +2943,16 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/v1/dashboard/summary/detail?type=vendor_progress",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "dashboard", "summary", "detail"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "summary",
+                "detail"
+              ],
               "query": [
                 {
                   "key": "type",

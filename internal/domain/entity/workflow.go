@@ -39,24 +39,26 @@ type Shift struct {
 }
 
 type PipelineReport struct {
-	ID                       string  `json:"id"`
-	PipelineItemAssignmentID string  `json:"pipeline_item_assignment_id"`
-	PipelineItemID           string  `json:"pipeline_item_id"`
-	PipelineID               string  `json:"pipeline_id"`
-	ItemID                   string  `json:"item_id"`
-	ItemName                 string  `json:"item_name"`
-	VendorID                 string  `json:"vendor_id"`
-	UserID                   string  `json:"user_id"`
-	Username                 string  `json:"username"`
-	SiteID                   string  `json:"site_id"`
-	SiteName                 string  `json:"site_name"`
-	SiteTimezone             string  `json:"site_timezone"` // IANA zone of shift hours and report_date
-	Shift                    string  `json:"shift"`
-	ReportDate               string  `json:"report_date"`
-	Status                   string  `json:"status"`
-	StatusRevisi             string  `json:"status_revisi"`
-	EvidenceBefore           *string `json:"evidence_before,omitempty"`
-	EvidenceAfter            *string `json:"evidence_after,omitempty"`
+	ID                       string `json:"id"`
+	PipelineItemAssignmentID string `json:"pipeline_item_assignment_id"`
+	PipelineItemID           string `json:"pipeline_item_id"`
+	PipelineID               string `json:"pipeline_id"`
+	ItemID                   string `json:"item_id"`
+	ItemName                 string `json:"item_name"`
+	VendorID                 string `json:"vendor_id"`
+	UserID                   string `json:"user_id"`
+	Username                 string `json:"username"`
+	SiteID                   string `json:"site_id"`
+	SiteName                 string `json:"site_name"`
+	SiteTimezone             string `json:"site_timezone"` // IANA zone of shift hours and report_date
+	Shift                    string `json:"shift"`
+	ReportDate               string `json:"report_date"`
+	Status                   string `json:"status"`
+	StatusRevisi             string `json:"status_revisi"`
+	// RevisionCount is how many revisions the Worker submitted (0 = original).
+	RevisionCount  int     `json:"revision_count"`
+	EvidenceBefore *string `json:"evidence_before,omitempty"`
+	EvidenceAfter  *string `json:"evidence_after,omitempty"`
 	// Short-lived signed download URLs of the evidence photos (set by the handler).
 	EvidenceBeforeURL *string    `json:"evidence_before_url,omitempty"`
 	EvidenceAfterURL  *string    `json:"evidence_after_url,omitempty"`
@@ -66,6 +68,26 @@ type PipelineReport struct {
 	Notes             *string    `json:"notes,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+// PipelineReportRevision is an earlier version of a report's details, replaced
+// by a Worker's revision. RevisionNo 0 is the original report.
+type PipelineReportRevision struct {
+	ID                string     `json:"id"`
+	RevisionNo        int        `json:"revision_no"`
+	EvidenceBefore    *string    `json:"evidence_before,omitempty"`
+	EvidenceAfter     *string    `json:"evidence_after,omitempty"`
+	EvidenceBeforeURL *string    `json:"evidence_before_url,omitempty"`
+	EvidenceAfterURL  *string    `json:"evidence_after_url,omitempty"`
+	OpenDate          *time.Time `json:"open_date,omitempty"`
+	ClosedDate        *time.Time `json:"closed_date,omitempty"`
+	NoteCategory      *string    `json:"note_category,omitempty"`
+	Notes             *string    `json:"notes,omitempty"`
+	// RevisedBy / Reason: who replaced this version, and why.
+	RevisedBy     *string   `json:"revised_by,omitempty"`
+	RevisedByName *string   `json:"revised_by_name,omitempty"`
+	Reason        *string   `json:"reason,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type PipelineReportInput struct {

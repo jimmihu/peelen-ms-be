@@ -367,6 +367,8 @@ CREATE TABLE IF NOT EXISTS pipeline_reports (
     -- SUBMITTED = worker mengirim/mengubah report setelah shift selesai (upload susulan)
     status_revisi        varchar(20) NOT NULL DEFAULT 'NONE'
                          CHECK (status_revisi IN ('NONE', 'SUBMITTED')),
+    -- Jumlah revisi yang diajukan worker (= nomor versi detail terbaru)
+    revision_count       integer NOT NULL DEFAULT 0,
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now(),
     UNIQUE (pipeline_item_assignment_id, shift, report_date)
@@ -408,6 +410,24 @@ CREATE TABLE IF NOT EXISTS pipeline_report_history (
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_report_history_report_created
     ON pipeline_report_history(pipeline_report_id, created_at);
+
+-- Versi lama laporan yang digantikan oleh revisi worker (0 = laporan asli).
+-- pipeline_report_details selalu berisi versi terbaru.
+CREATE TABLE IF NOT EXISTS pipeline_report_revisions (
+    id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    pipeline_report_id uuid NOT NULL REFERENCES pipeline_reports(id) ON DELETE RESTRICT,
+    revision_no        integer NOT NULL CHECK (revision_no >= 0),
+    evidence_before    text, -- object-storage key
+    evidence_after     text, -- object-storage key
+    open_date          timestamptz,
+    closed_date        timestamptz,
+    note_category      varchar(30),
+    notes              text,
+    revised_by         uuid REFERENCES users(id) ON DELETE SET NULL,
+    reason             text,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (pipeline_report_id, revision_no)
+);
 
 -- -----------------------------------------------------
 -- Inventory reports
