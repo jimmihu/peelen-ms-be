@@ -282,7 +282,9 @@ reports using `PATCH /inventory-report/{id}/review` with `status` (`IN_REVIEW`,
 Use `GET /inventory-report/{id}/evidence` to get a scoped, signed MinIO URL for
 the report photo; the URL expires after 10 minutes.
 Report lists accept `page`, `limit`, `vendor_id`, `site_id`, `user_id`, `status`,
-`from`, and `to`.
+`from`, and `to`. For pipeline reports `site_id` is the pipeline's site, and
+`note_category` (`NEAR_MISS`, `UNSAFE_ACTION`, `UNSAFE_CONDITION`, or `ANY` for any
+finding) lists the reports with a safety finding.
 
 `GET /dashboard/report?date=YYYY-MM-DD` returns counts for pipeline and inventory
 reports; `GET /reports/daily?date=YYYY-MM-DD` returns pipeline completion counts

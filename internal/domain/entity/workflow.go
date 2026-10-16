@@ -141,8 +141,10 @@ type ReportFilter struct {
 	Status   string
 	From     string
 	To       string
-	Page     int
-	Limit    int
+	// NoteCategory (pipeline reports): one safety category, or "ANY" for any finding.
+	NoteCategory string
+	Page         int
+	Limit        int
 }
 
 type MyTask struct {

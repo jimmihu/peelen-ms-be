@@ -452,7 +452,8 @@ func reportFilterFromQuery(c *gin.Context) (entity.ReportFilter, error) {
 	return entity.ReportFilter{
 		VendorID: c.Query("vendor_id"), SiteID: c.Query("site_id"), UserID: c.Query("user_id"),
 		Status: strings.ToUpper(c.Query("status")), From: c.Query("from"), To: c.Query("to"),
-		Page: page, Limit: limit,
+		NoteCategory: strings.ToUpper(strings.TrimSpace(c.Query("note_category"))),
+		Page:         page, Limit: limit,
 	}, nil
 }
 

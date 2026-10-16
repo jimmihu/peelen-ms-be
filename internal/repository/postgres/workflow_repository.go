@@ -386,7 +386,22 @@ func (r *WorkflowRepositoryImpl) ListMyTasks(ctx context.Context, access entity.
 
 func (r *WorkflowRepositoryImpl) ListPipelineReports(ctx context.Context, access entity.OperationalAccess, filter entity.ReportFilter) ([]entity.PipelineReport, int, error) {
 	where, args := pipelineReportScope(access)
+	// A pipeline belongs to one site: filter on it, not on every site of the vendor.
+	siteID := filter.SiteID
+	filter.SiteID = ""
 	appendReportFilters(&where, &args, filter, "p.vendor_id", "a.user_id", "pr.status", "pr.report_date")
+	if siteID != "" {
+		args = append(args, siteID)
+		where = append(where, fmt.Sprintf("p.site_id = $%d::uuid", len(args)))
+	}
+	switch filter.NoteCategory {
+	case "":
+	case "ANY":
+		where = append(where, "d.note_category IS NOT NULL")
+	default:
+		args = append(args, filter.NoteCategory)
+		where = append(where, fmt.Sprintf("d.note_category = $%d", len(args)))
+	}
 	return queryPipelineReports(ctx, r.db, strings.Join(where, " AND "), args, filter.Page, filter.Limit)
 }
 
