@@ -128,7 +128,7 @@ COMMIT;
 -- =====================================================
 -- INITIAL LOAD (development/testing, JANGAN dipakai di produksi)
 -- Jalankan SETELAH init.sql (dan migrations). Script ini MENGHAPUS semua data
--- lalu mengisi ulang: master role & shift, 10 PLTU, 5 vendor, superadmin,
+-- lalu mengisi ulang: master role & shift, 12 PLTU (10 WIB, 1 WITA, 1 WIT), 6 vendor, superadmin,
 -- 1 admin per PLTU, 1 admin worker per vendor, 10 worker per vendor,
 -- 9 pipeline area (55 item lokasi) per site vendor, assignment task tiap worker,
 -- pipeline report sejak awal kuartal lalu (detail + history, tanpa review admin),
@@ -210,10 +210,11 @@ INSERT INTO shifts (shift, start_time, end_time) VALUES
     ('NIGHT',   '00:00', '08:00');
 
 -- -----------------------------------------------------
--- sites: 10 PLTU
+-- sites: 12 PLTU
 -- -----------------------------------------------------
--- Semua PLTU ini di Jawa (WIB). Site di Kalimantan/Sulawesi/Bali pakai 'Asia/Makassar' (WITA),
--- di Papua/Maluku 'Asia/Jayapura' (WIT).
+-- 10 PLTU di Jawa (WIB) + 1 di Sulawesi (WITA, UTC+8) + 1 di Papua (WIT, UTC+9).
+-- Jam shift & report_date dibaca di zona site: shift DAY 08:00 di Jeneponto = 07:00 WIB,
+-- di Holtekamp = 06:00 WIB.
 INSERT INTO sites (code, name, site_type, timezone) VALUES
     ('PAITON',    'PLTU Paiton',          'PLTU', 'Asia/Jakarta'),
     ('SURALAYA',  'PLTU Suralaya',        'PLTU', 'Asia/Jakarta'),
@@ -224,17 +225,20 @@ INSERT INTO sites (code, name, site_type, timezone) VALUES
     ('LABUAN',    'PLTU Labuan',          'PLTU', 'Asia/Jakarta'),
     ('PLBRATU',   'PLTU Pelabuhan Ratu',  'PLTU', 'Asia/Jakarta'),
     ('ADIPALA',   'PLTU Adipala',         'PLTU', 'Asia/Jakarta'),
-    ('INDRAMAYU', 'PLTU Indramayu',       'PLTU', 'Asia/Jakarta');
+    ('INDRAMAYU', 'PLTU Indramayu',       'PLTU', 'Asia/Jakarta'),
+    ('JENEPONTO', 'PLTU Jeneponto',       'PLTU', 'Asia/Makassar'),
+    ('HOLTEKAMP', 'PLTU Holtekamp',       'PLTU', 'Asia/Jayapura');
 
 -- -----------------------------------------------------
--- vendors: 5 vendor, masing-masing pegang 2 PLTU
+-- vendors: 6 vendor, masing-masing pegang 2 PLTU (VND-006: site WITA & WIT)
 -- -----------------------------------------------------
 INSERT INTO vendors (code, name) VALUES
     ('VND-001', 'PT Mitra Teknik Abadi'),
     ('VND-002', 'PT Karya Mandiri Sejahtera'),
     ('VND-003', 'CV Sinergi Perkasa'),
     ('VND-004', 'PT Bumi Jaya Konstruksi'),
-    ('VND-005', 'PT Cahaya Energi Nusantara');
+    ('VND-005', 'PT Cahaya Energi Nusantara'),
+    ('VND-006', 'PT Nusantara Timur Teknik');
 
 INSERT INTO vendor_sites (vendor_id, site_id)
 SELECT v.id, s.id
@@ -248,7 +252,9 @@ FROM (VALUES
     ('VND-004', 'CIREBON'),
     ('VND-004', 'INDRAMAYU'),
     ('VND-005', 'PLBRATU'),
-    ('VND-005', 'ADIPALA')
+    ('VND-005', 'ADIPALA'),
+    ('VND-006', 'JENEPONTO'),
+    ('VND-006', 'HOLTEKAMP')
 ) AS mapping(vendor_code, site_code)
 JOIN vendors v ON v.code = mapping.vendor_code
 JOIN sites s ON s.code = mapping.site_code;
@@ -278,15 +284,16 @@ INSERT INTO users (username, password_hash, full_name, phone, must_change_passwo
     ('aw.karya',   crypt('Password123!', gen_salt('bf', 10)), 'Ani Wulandari',  '081220000002', false),
     ('aw.sinergi', crypt('Password123!', gen_salt('bf', 10)), 'Joko Susilo',    '081220000003', false),
     ('aw.bumi',    crypt('Password123!', gen_salt('bf', 10)), 'Lukman Hakim',   '081220000004', false),
-    ('aw.cahaya',  crypt('Password123!', gen_salt('bf', 10)), 'Maya Anggraini', '081220000005', false);
+    ('aw.cahaya',  crypt('Password123!', gen_salt('bf', 10)), 'Maya Anggraini', '081220000005', false),
+    ('aw.timur',   crypt('Password123!', gen_salt('bf', 10)), 'Yohanes Wenda',  '081220000006', false);
 
--- Worker: 10 per vendor, username w.vnd001.01 .. w.vnd005.10
+-- Worker: 10 per vendor, username w.vnd001.01 .. w.vnd006.10
 INSERT INTO users (username, password_hash, full_name, phone, must_change_password)
 SELECT 'w.' || lower(replace(v.code, '-', '')) || '.' || lpad(n::text, 2, '0'),
        crypt('Password123!', gen_salt('bf', 10)),
        (ARRAY['Andi', 'Bayu', 'Candra', 'Dimas', 'Eka', 'Fikri', 'Galih', 'Hadi', 'Ilham', 'Jaka'])[n]
            || ' ' ||
-       (ARRAY['Saputra', 'Wijaya', 'Hidayat', 'Kusuma', 'Pratama'])[substring(v.code FROM 5)::int],
+       (ARRAY['Saputra', 'Wijaya', 'Hidayat', 'Kusuma', 'Pratama', 'Nugroho'])[substring(v.code FROM 5)::int],
        '08130' || substring(v.code FROM 5) || lpad(n::text, 4, '0'),
        false
 FROM vendors v
@@ -331,7 +338,8 @@ FROM (VALUES
     ('aw.karya',   'VND-002'),
     ('aw.sinergi', 'VND-003'),
     ('aw.bumi',    'VND-004'),
-    ('aw.cahaya',  'VND-005')
+    ('aw.cahaya',  'VND-005'),
+    ('aw.timur',   'VND-006')
 ) AS m(username, vendor_code)
 JOIN users u   ON u.username = m.username
 JOIN vendors v ON v.code = m.vendor_code;
@@ -481,7 +489,7 @@ WITH base AS (
            (ARRAY['DAY', 'EVENING', 'NIGHT'])[(substring(w.username FROM 10 FOR 2)::int - 1) % 3 + 1] AS shift,
            -- Profil vendor supaya SLA & maturity bervariasi (bucket makin besar = makin buruk):
            --   VND-001 sangat baik (SLA tercapai), VND-004 sekitar target, VND-002 membaik,
-           --   VND-003 memburuk, VND-005 lemah. Tanpa offset: ~91% selesai, ~87% tepat waktu.
+           --   VND-003 memburuk, VND-005 lemah, VND-006 (WITA/WIT) baik. Tanpa offset: ~91% selesai, ~87% tepat waktu.
            -- Deterministik: sama untuk worker, area, item, dan tanggal yang sama di setiap reset.
            greatest(0, least(99, abs(hashtext(w.username || '|' || pa.name || '|' || pia.sort_order::text
                                              || '|' || d::date::text)::bigint) % 100
@@ -490,6 +498,7 @@ WITH base AS (
                    WHEN 2 THEN least(25, (current_date - d::date) / 4) - 10     -- membaik
                    WHEN 3 THEN 15 - least(25, (current_date - d::date) / 4)     -- memburuk
                    WHEN 4 THEN -4                                               -- sekitar target
+                   WHEN 6 THEN -8                                               -- baik
                    ELSE 18                                                      -- lemah
                END)) AS bucket
     FROM pipeline_item_assignments a
@@ -705,6 +714,8 @@ COMMIT;
 --                               "makin rendah makin baik")
 --   VND-004 Bumi        MONTH   standar                          -
 --   VND-005 Cahaya      WEEK    dengan temuan K3                 ADIPALA   QUARTER ketat
+--   VND-006 Timur       MONTH   standar                          JENEPONTO WEEK    ketat
+--   (VND-006: HOLTEKAMP WIT, JENEPONTO WITA; periode dihitung per tanggal lokal site)
 --
 -- Maturity: satu aturan default per vendor dengan periode yang sama seperti SLA
 -- default vendor tsb, dimensi dan level default.
@@ -734,11 +745,14 @@ INSERT INTO rule_plan VALUES
     ('SLA',      'VND-004', NULL,       'MONTH',   'standard',   'superadmin'),
     ('SLA',      'VND-005', NULL,       'WEEK',    'k3',         'superadmin'),
     ('SLA',      'VND-005', 'ADIPALA',  'QUARTER', 'strict',     'admin.adipala'),
+    ('SLA',      'VND-006', NULL,       'MONTH',   'standard',   'superadmin'),
+    ('SLA',      'VND-006', 'JENEPONTO','WEEK',    'strict',     'admin.jeneponto'),
     ('MATURITY', 'VND-001', NULL,       'MONTH',   'maturity',   'superadmin'),
     ('MATURITY', 'VND-002', NULL,       'WEEK',    'maturity',   'superadmin'),
     ('MATURITY', 'VND-003', NULL,       'QUARTER', 'maturity',   'superadmin'),
     ('MATURITY', 'VND-004', NULL,       'MONTH',   'maturity',   'superadmin'),
-    ('MATURITY', 'VND-005', NULL,       'WEEK',    'maturity',   'superadmin');
+    ('MATURITY', 'VND-005', NULL,       'WEEK',    'maturity',   'superadmin'),
+    ('MATURITY', 'VND-006', NULL,       'MONTH',   'maturity',   'superadmin');
 
 CREATE TEMP TABLE item_plan (item_set text, code text, weight numeric, target numeric) ON COMMIT DROP;
 

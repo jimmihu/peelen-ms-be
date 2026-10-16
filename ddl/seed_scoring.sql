@@ -15,6 +15,8 @@
 --                               "makin rendah makin baik")
 --   VND-004 Bumi        MONTH   standar                          -
 --   VND-005 Cahaya      WEEK    dengan temuan K3                 ADIPALA   QUARTER ketat
+--   VND-006 Timur       MONTH   standar                          JENEPONTO WEEK    ketat
+--   (VND-006: HOLTEKAMP WIT, JENEPONTO WITA; periode dihitung per tanggal lokal site)
 --
 -- Maturity: satu aturan default per vendor dengan periode yang sama seperti SLA
 -- default vendor tsb, dimensi dan level default.
@@ -44,11 +46,14 @@ INSERT INTO rule_plan VALUES
     ('SLA',      'VND-004', NULL,       'MONTH',   'standard',   'superadmin'),
     ('SLA',      'VND-005', NULL,       'WEEK',    'k3',         'superadmin'),
     ('SLA',      'VND-005', 'ADIPALA',  'QUARTER', 'strict',     'admin.adipala'),
+    ('SLA',      'VND-006', NULL,       'MONTH',   'standard',   'superadmin'),
+    ('SLA',      'VND-006', 'JENEPONTO','WEEK',    'strict',     'admin.jeneponto'),
     ('MATURITY', 'VND-001', NULL,       'MONTH',   'maturity',   'superadmin'),
     ('MATURITY', 'VND-002', NULL,       'WEEK',    'maturity',   'superadmin'),
     ('MATURITY', 'VND-003', NULL,       'QUARTER', 'maturity',   'superadmin'),
     ('MATURITY', 'VND-004', NULL,       'MONTH',   'maturity',   'superadmin'),
-    ('MATURITY', 'VND-005', NULL,       'WEEK',    'maturity',   'superadmin');
+    ('MATURITY', 'VND-005', NULL,       'WEEK',    'maturity',   'superadmin'),
+    ('MATURITY', 'VND-006', NULL,       'MONTH',   'maturity',   'superadmin');
 
 CREATE TEMP TABLE item_plan (item_set text, code text, weight numeric, target numeric) ON COMMIT DROP;
 
