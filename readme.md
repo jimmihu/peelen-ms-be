@@ -163,6 +163,8 @@ Operational list endpoints accept `page` (default `1`), `limit` (default `20`,
 maximum `100`), `status` (default `ACTIVE`; `ALL` for active and inactive), and `q`; vendor-scoped resources also
 accept `vendor_id` and `site_id`. Inventory lists additionally accept
 `status_condition`. Responses use `{ "data": [], "page": 1, "limit": 20, "total": 0 }`.
+Pipeline list and detail responses include `item_count` (active tasks: pipeline
+item and master task both `ACTIVE`) and `inactive_item_count`.
 DELETE operations on operational master records set status to `INACTIVE`.
 
 Inventory create/update requests use `multipart/form-data`; fields include
