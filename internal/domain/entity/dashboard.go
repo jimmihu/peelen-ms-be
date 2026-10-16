@@ -1,3 +1,4 @@
+
 package entity
 
 import (
@@ -25,12 +26,14 @@ type DashboardResponse struct {
 	TaskSummary     DashboardTaskSummary             `json:"task_summary"`
 	VendorProgress  []DashboardVendorProgressSummary `json:"vendor_progress"`
 	InventoryReport []DashboardInventoryReport       `json:"inventory_reports"`
-	SafetyReports   []DashboardSafetyReport         `json:"safety_reports"`
+	SafetyReports   []DashboardSafetyReport          `json:"safety_reports"`
 }
 
 type DashboardSummaryResponse = DashboardResponse
 
 type DashboardVendorProgressSummary struct {
+	SiteID             string  `json:"site_id"`
+	SiteName           string  `json:"site_name"`
 	VendorID           string  `json:"vendor_id"`
 	VendorName         string  `json:"vendor_name"`
 	TotalTask          int64   `json:"total_task"`
@@ -41,6 +44,8 @@ type DashboardVendorProgressSummary struct {
 }
 
 type DashboardVendorProgress struct {
+	SiteID               string          `json:"site_id"`
+	SiteName             string          `json:"site_name"`
 	VendorID             string          `json:"vendor_id"`
 	VendorName           string          `json:"vendor_name"`
 	TotalTask            int64           `json:"total_task"`
@@ -52,8 +57,6 @@ type DashboardVendorProgress struct {
 }
 
 type DashboardVendorProgressResponse struct {
-	SiteID         string                    `json:"site_id"`
-	SiteName       string                    `json:"site_name"`
 	VendorProgress []DashboardVendorProgress `json:"vendor_progress"`
 }
 
