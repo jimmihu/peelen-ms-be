@@ -116,7 +116,7 @@ func (r *WorkflowRepositoryImpl) DeleteSite(ctx context.Context, id string) erro
 	return workflowRequireAffected(result)
 }
 
-func (r *WorkflowRepositoryImpl) ListVendors(ctx context.Context, access entity.OperationalAccess) ([]entity.Vendor, error) {
+func (r *WorkflowRepositoryImpl) ListVendors(ctx context.Context, access entity.OperationalAccess, filter entity.VendorFilter) ([]entity.Vendor, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT v.id::text, v.code, v.name, v.status,
 			ARRAY(SELECT vs.site_id::text FROM vendor_sites vs WHERE vs.vendor_id = v.id ORDER BY vs.site_id)::text,
@@ -125,8 +125,12 @@ func (r *WorkflowRepositoryImpl) ListVendors(ctx context.Context, access entity.
 		WHERE ($1::boolean OR v.id = ANY($2::uuid[]) OR EXISTS (
 			SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = v.id AND vs.site_id = ANY($3::uuid[])
 		))
+		AND ($4 = '' OR EXISTS (SELECT 1 FROM vendor_sites vs WHERE vs.vendor_id = v.id AND vs.site_id = NULLIF($4, '')::uuid))
+		AND ($5 = '' OR v.status = $5)
+		AND ($6 = '' OR concat_ws(' ', v.code, v.name) ILIKE '%' || $6 || '%')
 		ORDER BY v.code
-	`, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs))
+	`, workflowSuperAdmin(access), pq.Array(access.VendorIDs), pq.Array(access.SiteIDs),
+		filter.SiteID, filter.Status, filter.Query)
 	if err != nil {
 		return nil, err
 	}

@@ -132,7 +132,7 @@ Auth > Login first, then set valid vendor/site IDs in the collection variables.
 | GET | `/audit-logs` | Super Admin |
 | GET, POST | `/sites` | All roles list in scope; Super Admin manages |
 | GET, PATCH, DELETE | `/sites/{id}` | All roles read in scope; Super Admin manages |
-| GET, POST | `/vendors` | All roles list in scope; Super Admin manages |
+| GET, POST | `/vendors` | All roles list in scope (optional `site_id`, `status`, `q`); Super Admin manages |
 | GET, PATCH, DELETE | `/vendors/{id}` | All roles read in scope; Super Admin manages |
 | GET | `/shifts` | Authenticated; returns the available shifts and their hours |
 | POST | `/shifts` | Super Admin; creates one of the predefined shift names |

@@ -14,6 +14,14 @@ type Site struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// VendorFilter narrows a vendor list: vendors working at SiteID, with Status,
+// whose code or name contains Query. Empty fields do not filter.
+type VendorFilter struct {
+	SiteID string
+	Status string
+	Query  string
+}
+
 type Vendor struct {
 	ID        string    `json:"id"`
 	Code      string    `json:"code"`

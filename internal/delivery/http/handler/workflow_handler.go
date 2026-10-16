@@ -84,7 +84,9 @@ func (h *WorkflowHandler) DeleteSite(c *gin.Context) {
 }
 
 func (h *WorkflowHandler) ListVendors(c *gin.Context) {
-	result, err := h.usecase.ListVendors(c.Request.Context(), currentUser(c))
+	result, err := h.usecase.ListVendors(c.Request.Context(), currentUser(c), entity.VendorFilter{
+		SiteID: c.Query("site_id"), Status: c.Query("status"), Query: strings.TrimSpace(c.Query("q")),
+	})
 	if err != nil {
 		handleWorkflowError(c, err)
 		return

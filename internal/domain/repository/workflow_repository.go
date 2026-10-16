@@ -13,7 +13,7 @@ type WorkflowRepository interface {
 	CreateSite(context.Context, entity.Site) (*entity.Site, error)
 	UpdateSite(context.Context, string, entity.Site) (*entity.Site, error)
 	DeleteSite(context.Context, string) error
-	ListVendors(context.Context, entity.OperationalAccess) ([]entity.Vendor, error)
+	ListVendors(context.Context, entity.OperationalAccess, entity.VendorFilter) ([]entity.Vendor, error)
 	GetVendor(context.Context, entity.OperationalAccess, string) (*entity.Vendor, error)
 	CreateVendor(context.Context, entity.Vendor, []string) (*entity.Vendor, error)
 	UpdateVendor(context.Context, string, entity.Vendor, []string) (*entity.Vendor, error)
