@@ -132,7 +132,7 @@ Auth > Login first, then set valid vendor/site IDs in the collection variables.
 | GET | `/audit-logs` | Super Admin |
 | GET, POST | `/sites` | All roles list in scope; Super Admin manages |
 | GET, PATCH, DELETE | `/sites/{id}` | All roles read in scope; Super Admin manages |
-| GET, POST | `/vendors` | All roles list in scope; Super Admin manages |
+| GET, POST | `/vendors` | All roles list in scope (optional `site_id`, `status`, `q`); Super Admin manages |
 | GET, PATCH, DELETE | `/vendors/{id}` | All roles read in scope; Super Admin manages |
 | GET | `/shifts` | Authenticated; returns the available shifts and their hours |
 | POST | `/shifts` | Super Admin; creates one of the predefined shift names |
@@ -246,7 +246,10 @@ Status and revision changes are recorded in `pipeline_report_history`.
 
 Both report endpoints also accept `multipart/form-data` with photo files
 `evidence_before` and `evidence_after` (JPEG/PNG/WebP, up to 5 MB each) plus the
-same fields as form values. Photos are stored in MinIO under `pipeline-reports/`.
+same fields as form values. Photos are stored in MinIO under `pipeline-reports/`. Report responses carry the
+object keys (`evidence_before`, `evidence_after`) and 10-minute signed URLs
+(`evidence_before_url`, `evidence_after_url`); inventory lists and details carry
+`image_url` the same way.
 For a JPEG, the camera's EXIF capture time becomes `open_date` (before photo) and
 `closed_date` (after photo), overriding any client-supplied value, so a Worker
 who finished on time but uploaded later for lack of signal is not counted as

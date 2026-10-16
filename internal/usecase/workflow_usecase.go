@@ -19,7 +19,7 @@ type WorkflowUsecase interface {
 	CreateSite(context.Context, *entity.User, entity.Site) (*entity.Site, error)
 	UpdateSite(context.Context, *entity.User, string, entity.Site) (*entity.Site, error)
 	DeleteSite(context.Context, *entity.User, string) error
-	ListVendors(context.Context, *entity.User) ([]entity.Vendor, error)
+	ListVendors(context.Context, *entity.User, entity.VendorFilter) ([]entity.Vendor, error)
 	GetVendor(context.Context, *entity.User, string) (*entity.Vendor, error)
 	CreateVendor(context.Context, *entity.User, entity.Vendor) (*entity.Vendor, error)
 	UpdateVendor(context.Context, *entity.User, string, entity.Vendor) (*entity.Vendor, error)
@@ -110,11 +110,16 @@ func (u *WorkflowUsecaseImpl) DeleteSite(ctx context.Context, actor *entity.User
 	return u.repository.DeleteSite(ctx, id)
 }
 
-func (u *WorkflowUsecaseImpl) ListVendors(ctx context.Context, actor *entity.User) ([]entity.Vendor, error) {
+func (u *WorkflowUsecaseImpl) ListVendors(ctx context.Context, actor *entity.User, filter entity.VendorFilter) ([]entity.Vendor, error) {
 	if err := validateWorkflowActor(actor); err != nil {
 		return nil, err
 	}
-	return u.repository.ListVendors(ctx, operationalAccess(actor))
+	filter.Status = strings.ToUpper(strings.TrimSpace(filter.Status))
+	if (filter.SiteID != "" && !validUUIDList([]string{filter.SiteID})) ||
+		(filter.Status != "" && filter.Status != "ACTIVE" && filter.Status != "INACTIVE") {
+		return nil, ErrInvalidOperationalData
+	}
+	return u.repository.ListVendors(ctx, operationalAccess(actor), filter)
 }
 
 func (u *WorkflowUsecaseImpl) GetVendor(ctx context.Context, actor *entity.User, id string) (*entity.Vendor, error) {
