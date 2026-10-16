@@ -44,7 +44,9 @@ func NewRouter(cfg Config) *gin.Engine {
 	admin := v1.Group("")
 	admin.Use(cfg.AuthMiddleware.Authenticate())
 	users := admin.Group("/users")
-	users.Use(cfg.AuthMiddleware.RequireRole("SUPER_ADMIN", "ADMIN_WORKER"))
+	// Super Admin: all accounts; Admin: Admin Workers of vendors at its sites;
+	// Admin Worker: Workers of its vendor (enforced in the usecase).
+	users.Use(cfg.AuthMiddleware.RequireRole("SUPER_ADMIN", "ADMIN", "ADMIN_WORKER"))
 	users.GET("", cfg.AdminHandler.ListUsers)
 	users.POST("", cfg.AdminHandler.CreateUser)
 	users.GET("/:id", cfg.AdminHandler.GetUser)

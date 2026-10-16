@@ -74,32 +74,41 @@ func NewAdminUsecase(repo repository.AdminRepository, bcryptCost int) AdminUseca
 	return &AdminUsecaseImpl{repository: repo, bcryptCost: bcryptCost}
 }
 
+// managedScope is the set of accounts the actor may manage: Super Admin all
+// accounts, Admin the Admin Workers of vendors at its sites, Admin Worker the
+// Workers of its vendor. ok is false for anyone else.
+func managedScope(actor *entity.User) (scope entity.ManagedUserScope, ok bool) {
+	switch {
+	case hasRole(actor, "SUPER_ADMIN"):
+		return entity.ManagedUserScope{}, true
+	case hasRole(actor, "ADMIN"):
+		if len(actor.Sites) == 0 {
+			return scope, false
+		}
+		return entity.ManagedUserScope{Role: "ADMIN_WORKER", SiteIDs: actor.Sites}, true
+	case hasRole(actor, "ADMIN_WORKER"):
+		if len(actor.Vendors) != 1 {
+			return scope, false
+		}
+		return entity.ManagedUserScope{Role: "WORKER", VendorID: actor.Vendors[0]}, true
+	}
+	return scope, false
+}
+
 func (u *AdminUsecaseImpl) ListUsers(ctx context.Context, actor *entity.User) ([]*entity.User, error) {
-	if !hasRole(actor, "SUPER_ADMIN", "ADMIN_WORKER") {
+	scope, ok := managedScope(actor)
+	if !ok {
 		return nil, ErrForbidden
 	}
-	vendorID := ""
-	if hasRole(actor, "ADMIN_WORKER") && !hasRole(actor, "SUPER_ADMIN") {
-		if len(actor.Vendors) != 1 {
-			return nil, ErrForbidden
-		}
-		vendorID = actor.Vendors[0]
-	}
-	return u.repository.ListManagedUsers(ctx, vendorID)
+	return u.repository.ListManagedUsers(ctx, scope)
 }
 
 func (u *AdminUsecaseImpl) GetUser(ctx context.Context, actor *entity.User, targetID string) (*entity.User, error) {
-	if !hasRole(actor, "SUPER_ADMIN", "ADMIN_WORKER") {
+	scope, ok := managedScope(actor)
+	if !ok {
 		return nil, ErrForbidden
 	}
-	vendorID := ""
-	if hasRole(actor, "ADMIN_WORKER") && !hasRole(actor, "SUPER_ADMIN") {
-		if len(actor.Vendors) != 1 {
-			return nil, ErrForbidden
-		}
-		vendorID = actor.Vendors[0]
-	}
-	user, err := u.repository.GetManagedUser(ctx, targetID, vendorID)
+	user, err := u.repository.GetManagedUser(ctx, targetID, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +119,8 @@ func (u *AdminUsecaseImpl) GetUser(ctx context.Context, actor *entity.User, targ
 }
 
 func (u *AdminUsecaseImpl) CreateUser(ctx context.Context, actor *entity.User, req CreateUserRequest, ipAddress string) (*entity.User, string, error) {
-	if !hasRole(actor, "SUPER_ADMIN", "ADMIN_WORKER") {
+	scope, ok := managedScope(actor)
+	if !ok {
 		return nil, "", ErrForbidden
 	}
 	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
@@ -123,12 +133,24 @@ func (u *AdminUsecaseImpl) CreateUser(ctx context.Context, actor *entity.User, r
 	if !validScopeIDs(req.SiteIDs, req.VendorIDs) {
 		return nil, "", ErrInvalidScope
 	}
-	if hasRole(actor, "ADMIN_WORKER") && !hasRole(actor, "SUPER_ADMIN") {
-		if len(actor.Vendors) != 1 || len(req.Roles) != 1 || req.Roles[0] != "WORKER" {
+	if scope.Role != "" {
+		// Managers create only the one role they manage.
+		if len(req.Roles) != 1 || req.Roles[0] != scope.Role {
 			return nil, "", ErrForbidden
 		}
 		req.SiteIDs = nil
-		req.VendorIDs = []string{actor.Vendors[0]}
+		if scope.VendorID != "" {
+			req.VendorIDs = []string{scope.VendorID}
+		} else if len(req.VendorIDs) == 1 {
+			// An Admin picks a vendor that operates at one of its sites.
+			operates, err := u.repository.VendorOperatesAtSites(ctx, req.VendorIDs[0], scope.SiteIDs)
+			if err != nil {
+				return nil, "", err
+			}
+			if !operates {
+				return nil, "", ErrInvalidScope
+			}
+		}
 	}
 	if !validRoleSet(req.Roles) || !scopeMatchesRoles(req.Roles, req.SiteIDs, req.VendorIDs) {
 		return nil, "", ErrInvalidScope
@@ -195,7 +217,7 @@ func (u *AdminUsecaseImpl) SetAuthorization(ctx context.Context, actor *entity.U
 	if !hasRole(actor, "SUPER_ADMIN") {
 		return ErrForbidden
 	}
-	current, err := u.repository.GetManagedUser(ctx, targetID, "")
+	current, err := u.repository.GetManagedUser(ctx, targetID, entity.ManagedUserScope{})
 	if err != nil || current == nil {
 		if err != nil {
 			return err
@@ -217,16 +239,11 @@ func (u *AdminUsecaseImpl) SetAuthorization(ctx context.Context, actor *entity.U
 }
 
 func (u *AdminUsecaseImpl) ResetPassword(ctx context.Context, actor *entity.User, targetID, password string, ipAddress string) (string, error) {
-	target, err := u.GetUser(ctx, actor, targetID)
-	if err != nil {
+	// GetUser limits the target to the actor's managed accounts.
+	if _, err := u.GetUser(ctx, actor, targetID); err != nil {
 		return "", err
 	}
-	if hasRole(actor, "ADMIN_WORKER") && !hasRole(actor, "SUPER_ADMIN") && !hasRole(target, "WORKER") {
-		return "", ErrNotFound
-	}
-	if !hasRole(actor, "SUPER_ADMIN", "ADMIN_WORKER") {
-		return "", ErrForbidden
-	}
+	var err error
 	if password == "" {
 		password, err = generateTemporaryPassword()
 		if err != nil {

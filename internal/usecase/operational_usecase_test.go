@@ -52,7 +52,7 @@ func TestOperationalUsecaseEnforcesSprintTwoRoleMatrix(t *testing.T) {
 		{"admin worker can manage inventory", "ADMIN_WORKER", entity.ResourceInventory, false},
 		{"admin worker can manage policy", "ADMIN_WORKER", entity.ResourcePolicy, false},
 		{"admin worker cannot manage pipeline", "ADMIN_WORKER", entity.ResourcePipeline, true},
-		{"admin worker can manage pipeline items", "ADMIN_WORKER", entity.ResourcePipelineItem, false},
+		{"admin worker cannot manage pipeline items", "ADMIN_WORKER", entity.ResourcePipelineItem, true},
 		{"admin cannot mutate global items", "ADMIN", entity.ResourceItem, true},
 		{"super admin can manage global items", "SUPER_ADMIN", entity.ResourceItem, false},
 		{"worker cannot create inventory", "WORKER", entity.ResourceInventory, true},
