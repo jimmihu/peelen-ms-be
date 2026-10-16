@@ -42,7 +42,7 @@ ENVS["ADMIN"]="$POSTMAN_DIR/env-admin.json"
 ENVS["ADMIN_WORKER"]="$POSTMAN_DIR/env-admin-worker.json"
 ENVS["WORKER"]="$POSTMAN_DIR/env-worker.json"
 
-# WORKER env uses worker01 which doesn't exist — patch it to w.vnd001.01
+# WORKER env uses worker01 which doesn't exist — patch it to w.test.fresh
 WORKER_ENV_PATCHED="$RESULTS_DIR/env-worker-patched.json"
 python3 -c "
 import json
@@ -50,10 +50,10 @@ with open('$POSTMAN_DIR/env-worker.json') as f:
     env = json.load(f)
 for v in env.get('values', []):
     if v['key'] == 'username':
-        v['value'] = 'w.vnd001.01'
+        v['value'] = 'w.test.fresh'
 with open('$WORKER_ENV_PATCHED', 'w') as f:
     json.dump(env, f)
-print('[runner] Patched worker env: worker01 -> w.vnd001.01')
+print('[runner] Patched worker env: worker01 -> w.test.fresh')
 "
 ENVS["WORKER"]="$WORKER_ENV_PATCHED"
 
