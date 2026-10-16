@@ -49,6 +49,20 @@ func (h *OperationalHandler) List(resource entity.OperationalResource) gin.Handl
 			handleOperationalError(c, err)
 			return
 		}
+		// Inventory photos are object keys: list rows get signed URLs too (thumbnails).
+		if resource == entity.ResourceInventory && h.objectStorage != nil {
+			for i := range records {
+				if records[i].Image == nil || *records[i].Image == "" {
+					continue
+				}
+				imageURL, err := h.objectStorage.SignedDownloadURL(c.Request.Context(), *records[i].Image, policyDownloadExpiry)
+				if err != nil {
+					_ = c.Error(err)
+					continue
+				}
+				records[i].ImageURL = &imageURL
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"data": records, "page": filter.Page, "limit": filter.Limit, "total": total,
 		})
