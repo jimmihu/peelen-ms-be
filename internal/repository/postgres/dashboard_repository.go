@@ -31,11 +31,10 @@ func (r *DashboardRepositoryImpl) GetDashboardSummary(
 	}
 
 	result := &entity.DashboardSummaryResponse{
-		Filter:              filter,
-		VendorProgress:      make([]entity.DashboardVendorProgressSummary, 0),
-		VendorUnassignments: make([]entity.DashboardVendorUnassignment, 0),
-		InventoryReport:     make([]entity.DashboardInventoryReport, 0),
-		SafetyReports:       make([]entity.DashboardSafetyReport, 0),
+		Filter:          filter,
+		VendorProgress:  make([]entity.DashboardVendorProgressSummary, 0),
+		InventoryReport: make([]entity.DashboardInventoryReport, 0),
+		SafetyReports:   make([]entity.DashboardSafetyReport, 0),
 	}
 
 	args := dashboardArgs(access, filter)
@@ -57,23 +56,21 @@ func (r *DashboardRepositoryImpl) GetDashboardSummary(
 				SiteName:           vendor.SiteName,
 				VendorID:           vendor.VendorID,
 				VendorName:         vendor.VendorName,
-				TargetPekerjaan:    vendor.TargetPekerjaan,
-				TotalPenugasan:     vendor.TotalPenugasan,
+				TotalTask:          vendor.TotalTask,
 				TotalArea:          vendor.TotalArea,
 				TotalPoint:         vendor.TotalPoint,
+				TotalWorker:        vendor.TotalWorker,
+				TotalReport:        vendor.TotalReport,
 				Completed:          vendor.Completed,
 				InProgress:         vendor.InProgress,
 				NotStarted:         vendor.NotStarted,
 				ProgressPercentage: vendor.ProgressPercentage,
+				StatusCheckPoint: dashboardCheckPointStatusFromDetail(
+					vendor.VendorProgressDetail,
+				),
 			},
 		)
 	}
-
-	unassignments, err := r.getVendorUnassignments(ctx, args)
-	if err != nil {
-		return nil, dashboardQueryError("vendor unassignments", err)
-	}
-	result.VendorUnassignments = unassignments
 
 	inventory, err := r.getInventoryReports(ctx, args)
 	if err != nil {
@@ -113,14 +110,8 @@ func (r *DashboardRepositoryImpl) GetDashboardDetail(
 			return nil, dashboardQueryError("vendor progress", err)
 		}
 
-		unassignments, err := r.getVendorUnassignments(ctx, args)
-		if err != nil {
-			return nil, dashboardQueryError("vendor unassignments", err)
-		}
-
 		result.Data = entity.DashboardVendorProgressResponse{
-			VendorProgress:      vendors,
-			VendorUnassignments: unassignments,
+			VendorProgress: vendors,
 		}
 
 	case "inventory_reports":
@@ -301,6 +292,43 @@ func dashboardDateRange(alias, column string) string {
 	)`, alias, column, alias, column)
 }
 
+// dashboardCheckPointFromDetail mengambil check_point dari JSON
+// vendor_progress_detail agar statusnya dapat digunakan oleh response.
+func dashboardCheckPointFromDetail(
+	detail json.RawMessage,
+) *entity.DashboardVendorCheckPoint {
+	if len(detail) == 0 {
+		return nil
+	}
+
+	var wrapper struct {
+		CheckPoint *entity.DashboardVendorCheckPoint `json:"check_point"`
+	}
+
+	if err := json.Unmarshal(detail, &wrapper); err != nil {
+		return nil
+	}
+
+	return wrapper.CheckPoint
+}
+
+// dashboardCheckPointStatusFromDetail mengambil status check_point
+// untuk field status_check_point pada response vendor_progress.
+func dashboardCheckPointStatusFromDetail(
+	detail json.RawMessage,
+) string {
+	checkPoint := dashboardCheckPointFromDetail(detail)
+	if checkPoint == nil {
+		return "INCOMPLETE"
+	}
+
+	if checkPoint.Status == "COMPLETE" {
+		return "COMPLETE"
+	}
+
+	return "INCOMPLETE"
+}
+
 // getTaskSummary menghitung target dari pipeline_items, bukan dari assignment.
 // Status laporan dihitung dari assignment aktif dan tanggal dashboard.
 func (r *DashboardRepositoryImpl) getTaskSummary(
@@ -334,13 +362,13 @@ func (r *DashboardRepositoryImpl) getTaskSummary(
 		),
 		target_summary AS (
 			SELECT
-				COUNT(*) AS target_pekerjaan,
 				COUNT(DISTINCT area_id) AS total_area,
 				COUNT(*) AS total_point
 			FROM filtered_target
 		),
 		assignment_summary AS (
 			SELECT
+				COUNT(DISTINCT fa.assignment_id) AS total_task,
 				COUNT(DISTINCT fa.assignment_id) FILTER (
 					WHERE EXISTS (
 						SELECT 1
@@ -370,9 +398,9 @@ func (r *DashboardRepositoryImpl) getTaskSummary(
 			FROM filtered_assignment fa
 		)
 		SELECT
-			ts.target_pekerjaan,
-			ts.total_area,
 			ts.total_point,
+			asum.total_task,
+			ts.total_area,
 			asum.in_progress,
 			asum.completed,
 			asum.not_started
@@ -381,9 +409,9 @@ func (r *DashboardRepositoryImpl) getTaskSummary(
 	`
 
 	return r.db.QueryRowContext(ctx, query, args...).Scan(
-		&result.TargetPekerjaan,
-		&result.TotalArea,
 		&result.TotalPoint,
+		&result.TotalTask,
+		&result.TotalArea,
 		&result.InProgress,
 		&result.Completed,
 		&result.NotStarted,
@@ -419,6 +447,8 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			  AND ` + dashboardPipelineSiteFilter() + `
 			  AND ` + dashboardVendorFilter("p") + `
 		),
+		-- Assignment aktif yang terlihat oleh akun login.
+		-- Untuk WORKER, hanya assignment milik user tersebut.
 		filtered_assignment AS (
 			SELECT
 				pia.id AS assignment_id,
@@ -441,29 +471,90 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			WHERE pia.is_active = TRUE
 			  AND ` + dashboardWorkerFilter("pia") + `
 		),
+		-- Check Point membaca semua target dan assignment aktif,
+		-- bukan hanya assignment yang terlihat oleh WORKER.
+		point_assignment_status AS (
+			SELECT
+				ft.site_id,
+				ft.vendor_id,
+				ft.pipeline_item_id,
+				EXISTS (
+					SELECT 1
+					FROM pipeline_item_assignments pia
+					WHERE pia.pipeline_item_id = ft.pipeline_item_id
+					  AND pia.is_active = TRUE
+				) AS is_assigned
+			FROM filtered_target ft
+		),
+		check_point_summary AS (
+			SELECT
+				ft.site_id,
+				ft.vendor_id,
+				COUNT(DISTINCT ft.area_id) AS total_area,
+				COUNT(*) AS total_point,
+				COUNT(*) FILTER (
+					WHERE pas.is_assigned
+				) AS total_assigned_point,
+				COALESCE(
+					JSONB_AGG(
+						JSONB_BUILD_OBJECT(
+							'pipeline_item_id', ft.pipeline_item_id,
+							'item_id', ft.item_id,
+							'nama_point', ft.point_name,
+							'area_id', ft.area_id,
+							'nama_area', ft.area_name
+						)
+						ORDER BY ft.area_name, ft.sort_order, ft.point_name
+					) FILTER (WHERE NOT pas.is_assigned),
+					'[]'::jsonb
+				) AS unassigned_point_detail
+			FROM filtered_target ft
+			JOIN point_assignment_status pas
+				ON pas.site_id = ft.site_id
+			   AND pas.vendor_id = ft.vendor_id
+			   AND pas.pipeline_item_id = ft.pipeline_item_id
+			GROUP BY ft.site_id, ft.vendor_id
+		),
+		-- Hanya point yang memiliki assignment aktif yang dimasukkan
+		-- ke area_detail.point_detail.
+		-- Untuk WORKER, point harus memiliki assignment milik user login.
 		point_base AS (
-			SELECT DISTINCT
-				fa.site_id,
-				fa.site_name,
-				fa.vendor_id,
-				fa.vendor_name,
-				fa.area_id,
-				fa.area_name,
-				fa.pipeline_item_id,
-				fa.item_id,
-				fa.point_name,
-				fa.sort_order
-			FROM filtered_assignment fa
+			SELECT
+				ft.site_id,
+				ft.site_name,
+				ft.vendor_id,
+				ft.vendor_name,
+				ft.area_id,
+				ft.area_name,
+				ft.pipeline_item_id,
+				ft.item_id,
+				ft.point_name,
+				ft.sort_order
+			FROM filtered_target ft
+			WHERE EXISTS (
+				SELECT 1
+				FROM pipeline_item_assignments pia
+				WHERE pia.pipeline_item_id = ft.pipeline_item_id
+				  AND pia.is_active = TRUE
+				  AND (
+					NOT ($7::boolean OR $11::boolean)
+					OR pia.user_id = NULLIF($8, '')::uuid
+				  )
+			)
 		),
 		assignment_summary AS (
 			SELECT
-				site_id,
-				vendor_id,
-				area_id,
-				pipeline_item_id,
-				COUNT(DISTINCT user_id) AS total_worker
-			FROM filtered_assignment
-			GROUP BY site_id, vendor_id, area_id, pipeline_item_id
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id,
+				COUNT(DISTINCT fa.user_id) AS total_worker
+			FROM filtered_assignment fa
+			GROUP BY
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id
 		),
 		pending_detail AS (
 			SELECT
@@ -487,7 +578,11 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 				WHERE pr.pipeline_item_assignment_id = fa.assignment_id
 				  AND pr.report_date = NULLIF($6, '')::date
 			)
-			GROUP BY fa.site_id, fa.vendor_id, fa.area_id, fa.pipeline_item_id
+			GROUP BY
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id
 		),
 		report_count AS (
 			SELECT
@@ -500,7 +595,11 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			JOIN pipeline_reports pr
 				ON pr.pipeline_item_assignment_id = fa.assignment_id
 			   AND pr.report_date = NULLIF($6, '')::date
-			GROUP BY fa.site_id, fa.vendor_id, fa.area_id, fa.pipeline_item_id
+			GROUP BY
+				fa.site_id,
+				fa.vendor_id,
+				fa.area_id,
+				fa.pipeline_item_id
 		),
 		report_rows AS (
 			SELECT
@@ -568,6 +667,7 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 				COALESCE(rc.total_report, 0) AS total_report,
 				JSONB_BUILD_OBJECT(
 					'pipeline_item_id', pb.pipeline_item_id,
+					'item_id', pb.item_id,
 					'nama_point', pb.point_name,
 					'total_worker', COALESCE(ass.total_worker, 0),
 					'total_report', COALESCE(rc.total_report, 0),
@@ -576,7 +676,9 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 						(
 							SELECT JSONB_OBJECT_AGG(
 								sd.shift,
-								JSONB_BUILD_OBJECT('task_detail', sd.task_detail)
+								JSONB_BUILD_OBJECT(
+									'task_detail', sd.task_detail
+								)
 							)
 							FROM shift_detail sd
 							WHERE sd.site_id = pb.site_id
@@ -612,6 +714,8 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 				pj.vendor_name,
 				pj.area_id,
 				pj.area_name,
+				-- Hanya menghitung point yang memiliki assignment,
+				-- sesuai dengan isi point_detail.
 				COUNT(*) AS total_point_per_area,
 				(
 					SELECT COUNT(DISTINCT fa.user_id)
@@ -638,16 +742,14 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			SELECT
 				aj.site_id,
 				aj.vendor_id,
+				(
+					SELECT COUNT(DISTINCT fa.user_id)
+					FROM filtered_assignment fa
+					WHERE fa.site_id = aj.site_id
+					  AND fa.vendor_id = aj.vendor_id
+				) AS total_worker,
+				COALESCE(SUM(aj.total_report_per_area), 0) AS total_report,
 				JSONB_BUILD_OBJECT(
-					'total_area', COUNT(*),
-					'total_point', COALESCE(SUM(aj.total_point_per_area), 0),
-					'total_worker', (
-						SELECT COUNT(DISTINCT fa.user_id)
-						FROM filtered_assignment fa
-						WHERE fa.site_id = aj.site_id
-						  AND fa.vendor_id = aj.vendor_id
-					),
-					'total_report', COALESCE(SUM(aj.total_report_per_area), 0),
 					'area_detail', JSONB_AGG(
 						JSONB_BUILD_OBJECT(
 							'area_id', aj.area_id,
@@ -658,10 +760,51 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 							'point_detail', aj.point_detail
 						)
 						ORDER BY aj.area_name
-					)
+					),
+					'check_point',
+						CASE
+							-- Check Point global tidak ditampilkan ke WORKER.
+							WHEN $7::boolean OR $11::boolean THEN NULL
+							ELSE JSONB_BUILD_OBJECT(
+								'status',
+									CASE
+										WHEN GREATEST(
+											COALESCE(cps.total_point, 0)
+											- COALESCE(cps.total_assigned_point, 0),
+											0
+										) = 0
+										THEN 'COMPLETE'
+										ELSE 'INCOMPLETE'
+									END,
+								'total_area',
+									COALESCE(cps.total_area, 0),
+								'total_point',
+									COALESCE(cps.total_assigned_point, 0),
+								'total_unassignment',
+									GREATEST(
+										COALESCE(cps.total_point, 0)
+										- COALESCE(cps.total_assigned_point, 0),
+										0
+									),
+								'unassigned_point_detail',
+									COALESCE(
+										cps.unassigned_point_detail,
+										'[]'::jsonb
+									)
+							)
+						END
 				) AS detail
 			FROM area_json aj
-			GROUP BY aj.site_id, aj.vendor_id
+			LEFT JOIN check_point_summary cps
+				ON cps.site_id = aj.site_id
+			   AND cps.vendor_id = aj.vendor_id
+			GROUP BY
+				aj.site_id,
+				aj.vendor_id,
+				cps.total_area,
+				cps.total_point,
+				cps.total_assigned_point,
+				cps.unassigned_point_detail
 		),
 		assignment_status AS (
 			SELECT
@@ -706,17 +849,13 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			SELECT
 				ft.site_id,
 				ft.vendor_id,
-				COUNT(DISTINCT ft.pipeline_item_id) AS total_penugasan
+				COUNT(pia.id) AS total_task
 			FROM filtered_target ft
-			WHERE EXISTS (
-				SELECT 1
-				FROM pipeline_item_assignments pia
-				WHERE pia.pipeline_item_id = ft.pipeline_item_id
-				AND pia.is_active = TRUE
-			)
-			GROUP BY
-				ft.site_id,
-				ft.vendor_id
+			JOIN pipeline_item_assignments pia
+				ON pia.pipeline_item_id = ft.pipeline_item_id
+			   AND pia.is_active = TRUE
+			WHERE ` + dashboardWorkerFilter("pia") + `
+			GROUP BY ft.site_id, ft.vendor_id
 		),
 		target_summary AS (
 			SELECT
@@ -724,7 +863,6 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 				ft.site_name,
 				ft.vendor_id,
 				ft.vendor_name,
-				COUNT(*) AS target_pekerjaan,
 				COUNT(DISTINCT ft.area_id) AS total_area,
 				COUNT(*) AS total_point
 			FROM filtered_target ft
@@ -739,17 +877,18 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			ts.site_name,
 			ts.vendor_id::text,
 			ts.vendor_name,
-			ts.target_pekerjaan,
-			COALESCE(at.total_penugasan, 0) AS total_penugasan,
+			COALESCE(at.total_task, 0) AS total_task,
 			ts.total_area,
 			ts.total_point,
+			COALESCE(vd.total_worker, 0) AS total_worker,
+			COALESCE(vd.total_report, 0) AS total_report,
 			COALESCE(ast.completed, 0) AS completed,
 			COALESCE(ast.in_progress, 0) AS in_progress,
 			COALESCE(ast.not_started, 0) AS not_started,
 			COALESCE(
 				ROUND(
 					100.0 * COALESCE(ast.completed, 0)
-					/ NULLIF(ts.target_pekerjaan, 0),
+					/ NULLIF(COALESCE(at.total_task, 0), 0),
 					2
 				),
 				0
@@ -758,13 +897,13 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		FROM target_summary ts
 		LEFT JOIN assignment_status ast
 			ON ast.site_id = ts.site_id
-		AND ast.vendor_id = ts.vendor_id
+		   AND ast.vendor_id = ts.vendor_id
 		LEFT JOIN assignment_total at
 			ON at.site_id = ts.site_id
-		AND at.vendor_id = ts.vendor_id
+		   AND at.vendor_id = ts.vendor_id
 		LEFT JOIN vendor_detail vd
 			ON vd.site_id = ts.site_id
-		AND vd.vendor_id = ts.vendor_id
+		   AND vd.vendor_id = ts.vendor_id
 		ORDER BY ts.site_name, ts.vendor_name
 	`
 
@@ -785,10 +924,11 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 			&item.SiteName,
 			&item.VendorID,
 			&item.VendorName,
-			&item.TargetPekerjaan,
-			&item.TotalPenugasan,
+			&item.TotalTask,
 			&item.TotalArea,
 			&item.TotalPoint,
+			&item.TotalWorker,
+			&item.TotalReport,
 			&item.Completed,
 			&item.InProgress,
 			&item.NotStarted,
@@ -799,186 +939,15 @@ func (r *DashboardRepositoryImpl) getVendorProgress(
 		}
 
 		item.VendorProgressDetail = append(json.RawMessage(nil), detail...)
+		item.StatusCheckPoint = dashboardCheckPointStatusFromDetail(
+			item.VendorProgressDetail,
+		)
+
 		result = append(result, item)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (r *DashboardRepositoryImpl) getVendorUnassignments(
-	ctx context.Context,
-	args []any,
-) ([]entity.DashboardVendorUnassignment, error) {
-	if len(args) < 11 {
-		return nil, fmt.Errorf(
-			"dashboard vendor unassignments: expected 11 arguments, got %d",
-			len(args),
-		)
-	}
-
-	query := `
-		SELECT
-			p.site_id::text,
-			s.name AS site_name,
-			p.vendor_id::text,
-			v.name AS vendor_name,
-			p.id::text AS area_id,
-			p.name AS area_name,
-			pi.id::text AS pipeline_item_id,
-			pi.item_id::text AS item_id,
-			i.name AS point_name,
-			pi.sort_order
-		FROM pipeline_items pi
-		JOIN pipelines p
-			ON p.id = pi.pipeline_id
-		JOIN sites s
-			ON s.id = p.site_id
-		JOIN vendors v
-			ON v.id = p.vendor_id
-		JOIN items i
-			ON i.id = pi.item_id
-		WHERE pi.status = 'ACTIVE'
-		  AND p.status = 'ACTIVE'
-		  AND i.status = 'ACTIVE'
-		  AND ` + dashboardPipelineScope() + `
-		  AND ` + dashboardPipelineSiteFilter() + `
-		  AND ` + dashboardVendorFilter("p") + `
-		  AND (
-				$6::text IS NULL
-				OR $6::text IS NOT NULL
-		  )
-		  AND (
-				$7::boolean IS NULL
-				OR $7::boolean IS NOT NULL
-		  )
-		  AND (
-				$8::text IS NULL
-				OR $8::text IS NOT NULL
-		  )
-		  AND NOT EXISTS (
-				SELECT 1
-				FROM pipeline_item_assignments pia
-				WHERE pia.pipeline_item_id = pi.id
-				  AND pia.is_active = TRUE
-		  )
-		ORDER BY
-			s.name,
-			v.name,
-			p.name,
-			pi.sort_order,
-			i.name
-	`
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("dashboard vendor unassignments: %w", err)
-	}
-	defer rows.Close()
-
-	result := make([]entity.DashboardVendorUnassignment, 0)
-
-	vendorIndex := make(map[string]int)
-	areaIndex := make(map[string]int)
-
-	for rows.Next() {
-		var (
-			siteID         string
-			siteName       string
-			vendorID       string
-			vendorName     string
-			areaID         string
-			areaName       string
-			pipelineItemID string
-			itemID         string
-			pointName      string
-			sortOrder      sql.NullInt64
-		)
-
-		if err := rows.Scan(
-			&siteID,
-			&siteName,
-			&vendorID,
-			&vendorName,
-			&areaID,
-			&areaName,
-			&pipelineItemID,
-			&itemID,
-			&pointName,
-			&sortOrder,
-		); err != nil {
-			return nil, fmt.Errorf(
-				"scan dashboard vendor unassignments: %w",
-				err,
-			)
-		}
-
-		vendorKey := siteID + "|" + vendorID
-
-		vIndex, exists := vendorIndex[vendorKey]
-		if !exists {
-			vIndex = len(result)
-			vendorIndex[vendorKey] = vIndex
-
-			result = append(
-				result,
-				entity.DashboardVendorUnassignment{
-					SiteID:               siteID,
-					SiteName:             siteName,
-					VendorID:             vendorID,
-					VendorName:           vendorName,
-					TotalUnassignedPoint: 0,
-					AreaDetail: make(
-						[]entity.DashboardVendorUnassignmentArea,
-						0,
-					),
-				},
-			)
-		}
-
-		result[vIndex].TotalUnassignedPoint++
-
-		areaKey := vendorKey + "|" + areaID
-
-		aIndex, exists := areaIndex[areaKey]
-		if !exists {
-			aIndex = len(result[vIndex].AreaDetail)
-			areaIndex[areaKey] = aIndex
-
-			result[vIndex].AreaDetail = append(
-				result[vIndex].AreaDetail,
-				entity.DashboardVendorUnassignmentArea{
-					AreaID:            areaID,
-					NamaArea:          areaName,
-					TotalPointPerArea: 0,
-					PointDetail: make(
-						[]entity.DashboardVendorUnassignedPoint,
-						0,
-					),
-				},
-			)
-		}
-
-		result[vIndex].AreaDetail[aIndex].TotalPointPerArea++
-
-		result[vIndex].AreaDetail[aIndex].PointDetail = append(
-			result[vIndex].AreaDetail[aIndex].PointDetail,
-			entity.DashboardVendorUnassignedPoint{
-				PipelineItemID: pipelineItemID,
-				ItemID:         itemID,
-				NamaPoint:      pointName,
-			},
-		)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf(
-			"iterate dashboard vendor unassignments: %w",
-			err,
-		)
+		return nil, rows.Err()
 	}
 
 	return result, nil
